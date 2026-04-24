@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "file",
-  description: "Next.js + shadcn/ui starter",
+  title: "TravelPlanner",
+  description: "Планирование путешествий",
 };
 
 export default function RootLayout({
