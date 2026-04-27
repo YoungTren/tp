@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import {
-  Plane, MapPin, Star, Clock, Utensils,
-  Camera, Landmark, Users, ArrowLeft, Heart, ChevronDown
+  Plane, MapPin, Star, Hash, Utensils,
+  Camera, Landmark, ArrowLeft, Heart, ChevronDown
 } from "lucide-react";
 import { AppPageBackdrop } from "./app-page-backdrop";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -15,8 +15,7 @@ interface TripHistoryDetailProps {
 const tripDetails: Record<string, {
   from: string;
   to: string;
-  dateStart: string;
-  dateEnd: string;
+  durationDays: number;
   budget: string;
   travelers: string;
   dayPlans: Array<{ day: number; title: string; items: string[] }>;
@@ -32,8 +31,7 @@ const tripDetails: Record<string, {
   "1": {
     from: "Москва",
     to: "Рим",
-    dateStart: "2026-03-10",
-    dateEnd: "2026-03-17",
+    durationDays: 8,
     budget: "80 000",
     travelers: "2",
     dayPlans: [
@@ -71,8 +69,7 @@ const tripDetails: Record<string, {
   "2": {
     from: "Москва",
     to: "Париж",
-    dateStart: "2026-02-14",
-    dateEnd: "2026-02-21",
+    durationDays: 7,
     budget: "95 000",
     travelers: "2",
     dayPlans: [
@@ -107,12 +104,6 @@ export function TripHistoryDetail({ tripId, onBack }: TripHistoryDetailProps) {
   const [isFavoritesExpanded, setIsFavoritesExpanded] = useState(false);
   const trip = tripDetails[tripId] || tripDetails["1"];
   const currentDayPlan = trip.dayPlans.find((d) => d.day === selectedDay) || trip.dayPlans[0];
-
-  const formatDate = (d: string) => {
-    if (!d) return "—";
-    const date = new Date(d);
-    return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-  };
 
   return (
     <div className="h-screen flex flex-col overflow-hidden relative">
@@ -175,62 +166,23 @@ export function TripHistoryDetail({ tripId, onBack }: TripHistoryDetailProps) {
                 className="overflow-hidden"
               >
                 <div className="flex flex-col gap-3 mt-3">
-                  {/* Город вылета */}
-                  <div className="rounded-xl bg-white/15 p-3.5 backdrop-blur-sm">
-                    <div className="mb-1.5 flex items-center gap-2 text-white/80">
-                      <Plane className="h-3.5 w-3.5" />
-                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Город вылета</span>
-                    </div>
-                    <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
-                      <span style={{ fontSize: "15px", fontWeight: 500 }}>{trip.from}</span>
-                    </div>
-                  </div>
-
-                  {/* Город / направление */}
                   <div className="rounded-xl bg-white/15 p-3.5 backdrop-blur-sm">
                     <div className="mb-1.5 flex items-center gap-2 text-white/80">
                       <MapPin className="h-3.5 w-3.5" />
-                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Город / направление</span>
+                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Выбранный город</span>
                     </div>
                     <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
                       <span style={{ fontSize: "15px", fontWeight: 500 }}>{trip.to}</span>
                     </div>
                   </div>
 
-                  {/* Даты */}
                   <div className="rounded-xl bg-white/15 p-3.5 backdrop-blur-sm">
                     <div className="mb-1.5 flex items-center gap-2 text-white/80">
-                      <Clock className="h-3.5 w-3.5" />
-                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Даты</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
-                        <span style={{ fontSize: "14px", fontWeight: 500 }}>{formatDate(trip.dateStart)}</span>
-                      </div>
-                      <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
-                        <span style={{ fontSize: "14px", fontWeight: 500 }}>{formatDate(trip.dateEnd)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Бюджет + Люди */}
-                  <div className="rounded-xl bg-white/15 p-3.5 backdrop-blur-sm">
-                    <div className="mb-1.5 flex items-center gap-2 text-white/80">
-                      <Star className="h-3.5 w-3.5" />
-                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Бюджет / чел., ₽</span>
+                      <Hash className="h-3.5 w-3.5" />
+                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Дни отдыха</span>
                     </div>
                     <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
-                      <span style={{ fontSize: "15px", fontWeight: 500 }}>{trip.budget}</span>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl bg-white/15 p-3.5 backdrop-blur-sm">
-                    <div className="mb-1.5 flex items-center gap-2 text-white/80">
-                      <Users className="h-3.5 w-3.5" />
-                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Количество людей</span>
-                    </div>
-                    <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
-                      <span style={{ fontSize: "15px", fontWeight: 500 }}>{trip.travelers}</span>
+                      <span style={{ fontSize: "15px", fontWeight: 500 }}>{trip.durationDays} дн.</span>
                     </div>
                   </div>
                 </div>
@@ -331,62 +283,23 @@ export function TripHistoryDetail({ tripId, onBack }: TripHistoryDetailProps) {
                 className="overflow-hidden lg:!h-auto lg:!opacity-100"
               >
                 <div className={`flex flex-col gap-3 ${isTripExpanded ? 'mt-0' : ''} lg:mt-0`}>
-                  {/* Город вылета */}
-                  <div className="rounded-xl bg-white/15 p-3.5 backdrop-blur-sm">
-                    <div className="mb-1.5 flex items-center gap-2 text-white/80">
-                      <Plane className="h-3.5 w-3.5" />
-                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Город вылета</span>
-                    </div>
-                    <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
-                      <span style={{ fontSize: "15px", fontWeight: 500 }}>{trip.from}</span>
-                    </div>
-                  </div>
-
-                  {/* Город / направление */}
                   <div className="rounded-xl bg-white/15 p-3.5 backdrop-blur-sm">
                     <div className="mb-1.5 flex items-center gap-2 text-white/80">
                       <MapPin className="h-3.5 w-3.5" />
-                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Город / направление</span>
+                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Выбранный город</span>
                     </div>
                     <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
                       <span style={{ fontSize: "15px", fontWeight: 500 }}>{trip.to}</span>
                     </div>
                   </div>
 
-                  {/* Даты */}
                   <div className="rounded-xl bg-white/15 p-3.5 backdrop-blur-sm">
                     <div className="mb-1.5 flex items-center gap-2 text-white/80">
-                      <Clock className="h-3.5 w-3.5" />
-                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Даты</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
-                        <span style={{ fontSize: "14px", fontWeight: 500 }}>{formatDate(trip.dateStart)}</span>
-                      </div>
-                      <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
-                        <span style={{ fontSize: "14px", fontWeight: 500 }}>{formatDate(trip.dateEnd)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Бюджет + Люди */}
-                  <div className="rounded-xl bg-white/15 p-3.5 backdrop-blur-sm">
-                    <div className="mb-1.5 flex items-center gap-2 text-white/80">
-                      <Star className="h-3.5 w-3.5" />
-                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Бюджет / чел., ₽</span>
+                      <Hash className="h-3.5 w-3.5" />
+                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Дни отдыха</span>
                     </div>
                     <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
-                      <span style={{ fontSize: "15px", fontWeight: 500 }}>{trip.budget}</span>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl bg-white/15 p-3.5 backdrop-blur-sm">
-                    <div className="mb-1.5 flex items-center gap-2 text-white/80">
-                      <Users className="h-3.5 w-3.5" />
-                      <span style={{ fontSize: "12px", fontWeight: 500 }}>Количество людей</span>
-                    </div>
-                    <div className="rounded-lg bg-white/15 px-3.5 py-2.5">
-                      <span style={{ fontSize: "15px", fontWeight: 500 }}>{trip.travelers}</span>
+                      <span style={{ fontSize: "15px", fontWeight: 500 }}>{trip.durationDays} дн.</span>
                     </div>
                   </div>
                 </div>

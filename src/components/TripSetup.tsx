@@ -1,43 +1,39 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Plane, MapPin, Calendar, DollarSign, Users, ArrowRight } from "lucide-react";
+import { Plane, MapPin, ArrowRight } from "lucide-react";
+import { capitalizePlaceName } from "@/lib/format-place";
+import { buildPlaceholderTripPlan } from "@/lib/placeholder-trip-plan";
 import { TRAVEL_HERO_BACKGROUND_SRC } from "@/lib/travel-hero-bg";
+import type { TripData, TripFormFields } from "@/types/trip";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-
-export interface TripData {
-  from: string;
-  to: string;
-  dateStart: string;
-  dateEnd: string;
-  budget: string;
-  travelers: number;
-}
 
 interface TripSetupProps {
   onComplete: (data: TripData) => void;
 }
 
 export function TripSetup({ onComplete }: TripSetupProps) {
-  const [form, setForm] = useState<TripData>({
-    from: "",
+  const [form, setForm] = useState({
     to: "",
-    dateStart: "",
-    dateEnd: "",
-    budget: "",
-    travelers: 2,
+    durationDays: 5,
   });
 
-  const update = (key: keyof TripData, value: string | number) =>
+  const update = (key: keyof typeof form, value: string | number) =>
     setForm((f) => ({ ...f, [key]: value }));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onComplete(form);
+    const fields: TripFormFields = {
+      from: "",
+      to: capitalizePlaceName(form.to.trim()),
+      durationDays: form.durationDays,
+      budget: "",
+      travelers: 2,
+    };
+    onComplete({ ...fields, plan: buildPlaceholderTripPlan(fields) });
   };
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
-      {/* Background image */}
       <ImageWithFallback
         src={TRAVEL_HERO_BACKGROUND_SRC}
         alt="Travel background"
@@ -45,130 +41,98 @@ export function TripSetup({ onComplete }: TripSetupProps) {
         loading="eager"
         fetchPriority="high"
       />
+      <div className="absolute inset-0 bg-black/20" />
 
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-black/30" />
-
-      <div className="relative z-10 flex h-full items-center justify-center px-4">
+      <div className="relative z-10 flex h-full items-center justify-center px-4 p-3 sm:p-4">
         <motion.div
-          initial={{ opacity: 0, y: 24 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="w-full max-w-[560px] rounded-3xl bg-white/10 backdrop-blur-xl p-6 sm:p-10 shadow-2xl border border-white/20"
+          className="w-full max-w-[420px] rounded-3xl border border-white/20 bg-white/10 p-6 shadow-2xl backdrop-blur-xl sm:p-10"
         >
           <div className="mb-6 sm:mb-8 flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ backgroundColor: "#4ECDC4" }}>
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-xl"
+              style={{ backgroundColor: "#4ECDC4" }}
+            >
               <Plane className="h-5 w-5 text-white" />
             </div>
-            <span style={{ fontSize: "20px", fontWeight: 600, color: "#ffffff" }}>TravelPlanner</span>
+            <span
+              className="text-[20px] sm:text-[22px]"
+              style={{ fontWeight: 600, color: "#ffffff" }}
+            >
+              TravelPlanner
+            </span>
           </div>
 
-          <h1 className="mb-2" style={{ fontSize: "24px", fontWeight: 600, color: "#ffffff", lineHeight: 1.3 }}>
+          <h1
+            className="mb-6 sm:mb-8"
+            style={{ fontSize: "24px", fontWeight: 600, lineHeight: 1.3, color: "#ffffff" }}
+          >
             Куда отправимся?
           </h1>
-          <p className="mb-6 sm:mb-8" style={{ fontSize: "15px", color: "rgba(255,255,255,0.7)" }}>
-            Заполните детали поездки, и мы составим маршрут
-          </p>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* From / To */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field icon={<MapPin className="h-4.5 w-4.5" />} label="Откуда">
-                <input
-                  value={form.from}
-                  onChange={(e) => update("from", e.target.value)}
-                  placeholder="Москва"
-                  className="w-full bg-transparent text-white placeholder-white/40 outline-none"
-                  style={{ fontSize: "15px" }}
-                />
-              </Field>
-              <Field icon={<MapPin className="h-4.5 w-4.5" />} label="Куда">
-                <input
-                  value={form.to}
-                  onChange={(e) => update("to", e.target.value)}
-                  placeholder="Рим"
-                  className="w-full bg-transparent text-white placeholder-white/40 outline-none"
-                  style={{ fontSize: "15px" }}
-                />
-              </Field>
-            </div>
-
-            {/* Dates */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field icon={<Calendar className="h-4.5 w-4.5" />} label="Дата вылета">
-                <input
-                  type="date"
-                  value={form.dateStart}
-                  onChange={(e) => update("dateStart", e.target.value)}
-                  className="w-full bg-transparent text-white outline-none [color-scheme:dark]"
-                  style={{ fontSize: "15px" }}
-                />
-              </Field>
-              <Field icon={<Calendar className="h-4.5 w-4.5" />} label="Дата возврата">
-                <input
-                  type="date"
-                  value={form.dateEnd}
-                  onChange={(e) => update("dateEnd", e.target.value)}
-                  className="w-full bg-transparent text-white outline-none [color-scheme:dark]"
-                  style={{ fontSize: "15px" }}
-                />
-              </Field>
-            </div>
-
-            {/* Budget / Travelers */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field icon={<DollarSign className="h-4.5 w-4.5" />} label="Бюджет">
-                <input
-                  value={form.budget}
-                  onChange={(e) => update("budget", e.target.value)}
-                  placeholder="150 000 ₽"
-                  className="w-full bg-transparent text-white placeholder-white/40 outline-none"
-                  style={{ fontSize: "15px" }}
-                />
-              </Field>
-              <Field icon={<Users className="h-4.5 w-4.5" />} label="Путешественники">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => update("travelers", Math.max(1, form.travelers - 1))}
-                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/20 text-white/70 hover:bg-white/10"
-                  >
-                    −
-                  </button>
-                  <span className="text-white" style={{ fontSize: "15px", fontWeight: 500 }}>{form.travelers}</span>
-                  <button
-                    type="button"
-                    onClick={() => update("travelers", form.travelers + 1)}
-                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/20 text-white/70 hover:bg-white/10"
-                  >
-                    +
-                  </button>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 items-end gap-2.5 sm:grid-cols-12 sm:gap-3">
+              <div className="sm:col-span-8">
+                <label
+                  className="mb-1.5 block"
+                  style={{ fontSize: "13px", fontWeight: 500, color: "rgba(255,255,255,0.7)" }}
+                >
+                  Куда
+                </label>
+                <div className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 backdrop-blur-sm transition focus-within:border-[#4ECDC4] focus-within:ring-2 focus-within:ring-[#4ECDC4]/30">
+                  <MapPin
+                    className="h-4 w-4 shrink-0"
+                    style={{ color: "rgba(255,255,255,0.45)" }}
+                  />
+                  <input
+                    value={form.to}
+                    onChange={(e) => update("to", e.target.value)}
+                    placeholder="Рим"
+                    className="min-w-0 flex-1 border-0 bg-transparent text-sm text-white outline-none placeholder:text-white/40"
+                    autoComplete="off"
+                  />
                 </div>
-              </Field>
+              </div>
+
+              <div className="min-w-0 sm:col-span-4">
+                <label
+                  className="mb-1.5 block"
+                  style={{ fontSize: "13px", fontWeight: 500, color: "rgba(255,255,255,0.7)" }}
+                >
+                  Количество дней
+                </label>
+                <div className="flex min-h-[42px] items-center justify-center rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 backdrop-blur-sm transition focus-within:border-[#4ECDC4] focus-within:ring-2 focus-within:ring-[#4ECDC4]/30">
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={form.durationDays}
+                    onChange={(e) =>
+                      update(
+                        "durationDays",
+                        Math.min(60, Math.max(1, parseInt(e.target.value, 10) || 1))
+                      )
+                    }
+                    className="w-full min-w-0 max-w-full border-0 bg-transparent text-center text-sm tabular-nums text-white [appearance:textfield] sm:max-w-full [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    style={{ colorScheme: "dark" }}
+                    aria-label="Количество дней"
+                  />
+                </div>
+              </div>
             </div>
 
             <button
               type="submit"
-              className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-white transition-all hover:opacity-90 active:scale-[0.98]"
-              style={{ backgroundColor: "#4ECDC4", fontSize: "15px", fontWeight: 600 }}
+              className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl py-3.5 text-sm font-semibold text-white transition hover:opacity-90 active:scale-[0.98]"
+              style={{ backgroundColor: "#4ECDC4" }}
             >
               Создать маршрут
-              <ArrowRight className="h-4.5 w-4.5" />
+              <ArrowRight className="h-4 w-4" strokeWidth={2.2} />
             </button>
           </form>
         </motion.div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-1.5 block" style={{ fontSize: "13px", fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>{label}</label>
-      <div className="flex items-center gap-2.5 rounded-xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-sm focus-within:border-[#4ECDC4] focus-within:ring-2 focus-within:ring-[#4ECDC4]/30 transition-all">
-        <span className="text-white/50">{icon}</span>
-        {children}
       </div>
     </div>
   );

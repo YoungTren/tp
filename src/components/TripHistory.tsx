@@ -8,8 +8,7 @@ interface HistoryTrip {
   destination: string;
   country: string;
   imageUrl: string;
-  dateStart: string;
-  dateEnd: string;
+  durationDays: number;
 }
 
 interface TripHistoryProps {
@@ -23,57 +22,46 @@ const historyTrips: HistoryTrip[] = [
     destination: "Рим",
     country: "Италия",
     imageUrl: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    dateStart: "2026-03-10",
-    dateEnd: "2026-03-17",
+    durationDays: 8,
   },
   {
     id: "2",
     destination: "Париж",
     country: "Франция",
     imageUrl: "https://images.unsplash.com/photo-1511739001486-6bfe10ce785f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    dateStart: "2026-02-14",
-    dateEnd: "2026-02-21",
+    durationDays: 7,
   },
   {
     id: "3",
     destination: "Барселона",
     country: "Испания",
     imageUrl: "https://images.unsplash.com/photo-1583422409516-2895a77efded?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    dateStart: "2026-01-05",
-    dateEnd: "2026-01-12",
+    durationDays: 7,
   },
   {
     id: "4",
     destination: "Токио",
     country: "Япония",
     imageUrl: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    dateStart: "2025-12-20",
-    dateEnd: "2025-12-28",
+    durationDays: 8,
   },
   {
     id: "5",
     destination: "Стамбул",
     country: "Турция",
     imageUrl: "https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    dateStart: "2025-11-10",
-    dateEnd: "2025-11-15",
+    durationDays: 5,
   },
   {
     id: "6",
     destination: "Прага",
     country: "Чехия",
     imageUrl: "https://images.unsplash.com/photo-1541849546-216549ae216d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    dateStart: "2025-10-01",
-    dateEnd: "2025-10-07",
+    durationDays: 7,
   },
 ];
 
 export function TripHistory({ onClose, onSelectTrip }: TripHistoryProps) {
-  const formatDate = (d: string) => {
-    const date = new Date(d);
-    return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
-  };
-
   return (
     <div className="h-screen flex flex-col overflow-hidden relative">
       <AppPageBackdrop />
@@ -136,7 +124,7 @@ export function TripHistory({ onClose, onSelectTrip }: TripHistoryProps) {
 
                   <div className="space-y-1">
                     <div className="text-white/70" style={{ fontSize: "12px" }}>
-                      {formatDate(trip.dateStart)} — {formatDate(trip.dateEnd)}
+                      {trip.durationDays} дн.
                     </div>
                   </div>
                 </div>
