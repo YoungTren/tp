@@ -34,8 +34,8 @@ export function RecommendationsList({ onClose, selectedId, recommendations }: Re
         <p className="hidden sm:block" style={{ fontSize: "14px", color: "#666" }}>{recommendations.length} мест</p>
       </header>
 
-      <div className="flex-1 overflow-auto px-4 md:px-8 py-6">
-        <div className="mx-auto max-w-4xl space-y-4">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 py-6 md:px-10">
+        <div className="mx-auto w-full max-w-5xl space-y-4 lg:max-w-6xl">
           {sorted.map((rec, index) => {
             const isSelected = rec.id === selectedId;
 

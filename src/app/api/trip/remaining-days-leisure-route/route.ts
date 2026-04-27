@@ -5,8 +5,8 @@ import {
   orderSightsStopsByStartAndNearest,
 } from "@/lib/leisure-stop-order";
 import {
-  multiDayLeisureFromModelSchema,
   normalizeLeisureTitle,
+  remainingDaysLeisureFromModelSchema,
 } from "@/lib/multi-day-leisure-schema";
 import { getServerEnv } from "@/lib/server-env";
 import {
@@ -38,6 +38,7 @@ export async function POST(request: Request) {
     travelers?: number;
     durationDays?: number;
     titleHint?: string;
+    lockedDay1Titles?: string[];
   }) ?? {};
 
   const to = String(parsed.to ?? "").trim();
@@ -46,6 +47,9 @@ export async function POST(request: Request) {
   const travelers = Number(parsed.travelers ?? 1) || 1;
   const titleHint = String(parsed.titleHint ?? "").trim();
   const durationDays = normalizeDurationDays(Number(parsed.durationDays ?? 0));
+  const lockedDay1Titles = Array.isArray(parsed.lockedDay1Titles)
+    ? parsed.lockedDay1Titles.map((t) => String(t ?? "").trim()).filter(Boolean)
+    : [];
 
   if (!to) {
     return NextResponse.json({ error: "to required" }, { status: 400 });
@@ -59,37 +63,45 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  if (lockedDay1Titles.length < 1) {
+    return NextResponse.json(
+      { error: "lockedDay1Titles required" },
+      { status: 400 }
+    );
+  }
 
-  const systemPrompt = `Ты планировщик **поездки на несколько дней** в **одном** городе: только **достопримечательности** (без еды, без ПАРКОВ-аттракционов, без ТЦ-шоппинга).
+  const expectedRemaining = durationDays - 1;
+  const lockedList = lockedDay1Titles.map((t) => `• ${t}`).join("\n");
+
+  const systemPrompt = `Ты планировщик **поездки** в **одном** городе: только **достопримечательности** (без еды, без ПАРКОВ-аттракционов, без ТЦ-шоппинга).
+**День 1 уже полностью спланирован на клиенте** — эти места **категорически нельзя** дублировать даже с перефразом.
 Отвечай **только** валидным JSON (без markdown) на русском.
 
-**Схема:**
+**Схема (только дни 2…${durationDays}):**
 {
   "days": [
-    { "day": 1, "dayTitle"?: string, "stops": [ { "title", "description", "category", "lat", "lon", "rating"?, "estimatedCost", "interestingFacts": [3 strings] } ] },
-    { "day": 2, ... },
-    ...
+    { "day": 2, "dayTitle"?: string, "stops": [ { "title", "description", "category", "lat", "lon", "rating"?, "estimatedCost", "interestingFacts": [3 strings] } ] },
+    { "day": 3, ... }
   ]
 }
 
 **ЖЁСТКИЕ ПРАВИЛА:**
-1) В массиве \`days\` **ровно ${durationDays}** элементов, поля \`day\` = 1,2,…,${durationDays} — по **одному** в каждом.
-2) **НИ ОДНА** \`stops[i].title\` **не повторяется** между **разными** днями. Даже похожие места: **другой** смысл в названии (корпус, запад/востор., другой музей) — **уникальные** строки \`title\`.
-3) **Всё** интересное по наследию/архитектуре, что реально **осмотреть** за \`${durationDays}\` **полных** дневных выходов в **${to}** — **раскидано** по **всем** дням: не сваливай 80% в первый день, не оставляй пустоту в конце. Равномерно по **числу** и **интересу** (сильные — не одним в первом днём, если в городе больше “магнитов”).
-4) **Один** день = **один** **компактный** **пешеходный** **карман/цепочка** (как **однодневные** **прогулки**), соседние остановки в \`stops\` **заложи** **логично** по \`(lat,lon)\` (~0,7–2 км между соседними, без прыжков 4+ км без причины).
-5) **Каждый** **день** **последовательность** \`stops\` **логична** **как** **пешеходная** **цепочка** **от** **той** **же** **стартовой** **зоны**, что «${startAddress}» (каждое **утро** **выходим** **снова** **отсюда**; первая остановка **дня** **ближайшая/логичная** **к** **этой** **точке**).
-6) \`day\` 2..${durationDays} — **другие** **районы/кластеры** **${to}** (север/юг и т.д.), **без** **повторов** **\`title\`** с **предыдущими** **днями** (п.2).
-7) Координаты WGS84 **реальные** для \`${to}\`, категории: как в однодневной схеме (достопримечательности, музеи, площади, соборы, и т.д.), **без** гастротемы.
-8) **Каждый** **день:** в \`stops\` **ровно 5** **достопримечательностей** (только **пункты** **осмотра**; **старт/отель** **«${startAddress}»** **в** **JSON** **не** **включай** **и** **в** **эти** **5** **не** **считай**). **Короткие** **описания**, **если** **нужно** **уплотнить** **текст**.
-9) В **каждом** \`stops\` **обязателен** \`estimatedCost\`: **приблизительный** **вход** **в** **валюте** **региона** (Европа — **€**, **РФ/СНГ** — **₽**); **бесплатно** **у** **улиц/площадей** — \`Бесплатно\`; **платные** **музеи/храмы** — **реалистичный** **билет**; **не** **один** **и** **тот** **же** \`~0\` **для** **всех** **платных** **мест**.
-10) В **каждой** **остановке** **обязательны** \`interestingFacts\`: **массив** **из** **3** **строк** — **короткие** **разные** **факты** (как **в** **однодневной** **схеме**), **без** **копирования** \`description\`.`;
+1) В массиве \`days\` **ровно ${expectedRemaining}** элементов, поля \`day\` = 2,3,…,${durationDays} — **по одному** на каждый номер, **без** **дня 1** и **без** **пропусков**.
+2) **НИ ОДНА** \`stops[i].title\` **не совпадает** с **уже** **занятыми** **дня 1** (см. список в запросе пользователя) и **не** **повторяется** **между** **днями** 2…${durationDays}. Уникальные строки \`title\`.
+3) **Раскидка** **интереса** **по** **дням** 2…${durationDays}: **не** **сваливай** **всё** **во** **2-й** **день**, **последний** **день** **не** **пустой** **по** **смыслу** (сильные места — **не** **только** **в** **одном** **дне**).
+4) **Каждый** **день** = **один** **пешеходный** **карман**; соседние \`stops\` **~0,7–2** км, без скачков 4+ км без причины; **каждое** **утро** **старт** **снова** **от** **«${startAddress}»** (первая остановка **дня** **логична** **к** **стартy**).
+5) Координаты WGS84 **реальные** для \`${to}\`, **дни** 2+ — **другие** **районы/кластеры**, **чем** **типично** **для** **первого** **дня** (если известен по городу), **без** **копий** **имён** **с** **дня 1**.
+6) **Каждый** **день:** \`stops\` **ровно 5** (только **осмотр**; **старт** **не** **в** **массиве**).
+7) \`estimatedCost\` и \`interestingFacts\` — как в мультидневной **полной** **схеме** (валюта региона, 3 факта).`;
 
-  const userPrompt = `Собери **${durationDays}** **раздельных** **днёв** в **${to}**; **как** **ожидается** **тур** **на** **все** **дни** **пребывания** — **никакого** **дубля** **достопримечательностей** **между** **днями**. **В** **каждом** **дне** **в** \`stops\` **ровно 5** **мест** (**старт** **отдельно**, **не** **в** **массиве**).
+  const userPrompt = `**Уже занято (день 1) — НЕ повторять, НИКАКИХ дублей и «похожих» названий на эти объекты:**
+${lockedList}
 
-- **Первый** **день** (day 1): **старт/отель/точка** **около** «${startAddress}»;
+Собери **только** **дни 2…${durationDays}** в **${to}**; **в** **сумме** **${expectedRemaining}** **дневных** **маршрутов**, **в** **каждом** **ровно 5** **достопримечательностей** в \`stops\`.
+
+- **Старт каждого дня:** «${startAddress}»;
 - **Гостей:** ${travelers} чел., **бюджет:** ${budget}
-${titleHint ? `- **Пожелания** (только **наследие**, **не** еда): ${titleHint}\n` : ""}
-`;
+${titleHint ? `- **Пожелания** (только **наследие**): ${titleHint}\n` : ""}`;
 
   const deepseekRes = await fetch(DEEPSEEK_API_URL, {
     method: "POST",
@@ -145,7 +157,7 @@ ${titleHint ? `- **Пожелания** (только **наследие**, **н
     );
   }
 
-  const modelPlan = multiDayLeisureFromModelSchema.safeParse(json);
+  const modelPlan = remainingDaysLeisureFromModelSchema.safeParse(json);
   if (!modelPlan.success) {
     const iss = modelPlan.error.issues.slice(0, 8);
     return NextResponse.json(
@@ -161,10 +173,10 @@ ${titleHint ? `- **Пожелания** (только **наследие**, **н
   }
 
   const { days: rawDays } = modelPlan.data;
-  if (rawDays.length !== durationDays) {
+  if (rawDays.length !== expectedRemaining) {
     return NextResponse.json(
       {
-        error: `Model returned ${rawDays.length} day(s), expected ${durationDays}`,
+        error: `Model returned ${rawDays.length} day(s), expected ${expectedRemaining} (days 2…${durationDays})`,
       },
       { status: 502 }
     );
@@ -172,21 +184,24 @@ ${titleHint ? `- **Пожелания** (только **наследие**, **н
 
   const sorted = [...rawDays].sort((a, b) => a.day - b.day);
   for (let k = 0; k < sorted.length; k += 1) {
-    if (sorted[k]!.day !== k + 1) {
+    if (sorted[k]!.day !== k + 2) {
       return NextResponse.json(
-        { error: `day numbers must be 1…${durationDays} without gaps` },
+        { error: `day numbers must be 2…${durationDays} without gaps` },
         { status: 502 }
       );
     }
   }
 
   const seen = new Set<string>();
+  for (const t of lockedDay1Titles) {
+    seen.add(normalizeLeisureTitle(t) || t);
+  }
   for (const d of sorted) {
     for (const s of d.stops) {
       const key = normalizeLeisureTitle(s.title) || s.title.trim();
       if (seen.has(key)) {
         return NextResponse.json(
-          { error: "Duplicate place title between days" },
+          { error: "Duplicate or forbidden place title (collides with day 1 or within plan)" },
           { status: 502 }
         );
       }
@@ -263,8 +278,7 @@ ${titleHint ? `- **Пожелания** (только **наследие**, **н
     });
     out.push({
       day: dayRow.day,
-      dayTitle:
-        dayRow.dayTitle?.trim() || `День ${dayRow.day}: ${to}`,
+      dayTitle: dayRow.dayTitle?.trim() || `День ${dayRow.day}: ${to}`,
       stops: materialized,
       startPoint: firstDayStart,
     });

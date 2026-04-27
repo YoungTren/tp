@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { motion } from "motion/react";
 import {
   Plane,
@@ -39,6 +40,8 @@ import {
   AttractionPhotoCarousel,
   type CarouselSlide,
 } from "./attraction-photo-carousel";
+import { DayStopsDetailDialog } from "./day-stops-detail-dialog";
+import { RouteGenerationWalkLoader } from "./route-generation-walk-loader";
 import type { MapRouteFocus, YandexMapPoint } from "./yandex-trip-map";
 import type { DayPlan, LeisureRouteStop, TripData } from "@/types/trip";
 
@@ -125,8 +128,10 @@ export function Dashboard({
   const [editingStartAddress, setEditingStartAddress] = useState("");
   const [isEditingStart, setIsEditingStart] = useState(false);
   const [createRouteLoading, setCreateRouteLoading] = useState(false);
+  const [restOfDaysLoading, setRestOfDaysLoading] = useState(false);
   const [createRouteError, setCreateRouteError] = useState<string | null>(null);
   const [mapRouteFocus, setMapRouteFocus] = useState<MapRouteFocus>(null);
+  const [dayStopsDetailOpen, setDayStopsDetailOpen] = useState(false);
   /** viewPath с карты — совпадает с ymaps.route (после геокода старта при необходимости) */
   const [mapItineraryPath, setMapItineraryPath] = useState<
     readonly WgsPoint[] | null
@@ -139,6 +144,12 @@ export function Dashboard({
       itineraryDays.find((d) => d.day === selectedDay) || itineraryDays[0]
     );
   }, [itineraryDays, selectedDay]);
+
+  const sortedRouteStopsForDialog = useMemo(
+    () =>
+      [...(currentDayPlan.routeStops ?? [])].sort((a, b) => a.order - b.order),
+    [currentDayPlan.routeStops]
+  );
 
   const resolvedRouteStartRaw = useMemo(
     () => resolveTripRouteStartAddress(itineraryDays, currentDayPlan),
@@ -179,6 +190,14 @@ export function Dashboard({
     () => resolvedRouteStartRaw?.trim() ?? "",
     [resolvedRouteStartRaw]
   );
+
+  /** Мультидневка: кнопка «Создать маршрут» скрывается после дня 1, даже если открыт день 2+ */
+  const canShowCreateRouteButton = useMemo(() => {
+    if (itineraryDays.length <= 1) {
+      return !currentDayPlan.routeGenerated;
+    }
+    return !itineraryDays[0]?.routeGenerated;
+  }, [itineraryDays, currentDayPlan.routeGenerated]);
 
   const dayItineraryStops = useMemo<YandexMapPoint[]>(() => {
     const stops = currentDayPlan.routeStops;
@@ -272,6 +291,10 @@ export function Dashboard({
 
   useEffect(() => {
     setMapRouteFocus(null);
+  }, [selectedDay]);
+
+  useEffect(() => {
+    setDayStopsDetailOpen(false);
   }, [selectedDay]);
 
   useEffect(() => {
@@ -373,9 +396,52 @@ export function Dashboard({
       }
       setCreateRouteError(null);
       setCreateRouteLoading(true);
+      setRestOfDaysLoading(false);
       try {
         if (nDays > 1) {
-          const res = await fetch("/api/trip/multi-day-leisure-route", {
+          const res1 = await fetch("/api/trip/day-leisure-route", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: destinationForTrip,
+              startAddress: startForRequest,
+              budget: tripData.budget,
+              travelers: tripData.travelers,
+              titleHint: regenerateHint,
+            }),
+          });
+          const data1: unknown = await res1.json();
+          if (!res1.ok) {
+            setCreateRouteError(
+              (data1 as { error?: string })?.error ?? "Не удалось создать маршрут 1-го дня"
+            );
+            return;
+          }
+          const d1 = data1 as {
+            dayTitle: string;
+            stops: LeisureRouteStop[];
+            startPoint?: { lat: number; lon: number };
+          };
+          setItineraryDaysAndParent((prev) => {
+            const day1StartAddr = prev[0]?.routeStartAddress?.trim() ?? "";
+            return prev.map((d) =>
+              d.day === 1
+                ? {
+                    ...d,
+                    routeGenerated: true,
+                    title: d1.dayTitle,
+                    routeStops: d1.stops,
+                    items: [] as string[],
+                    routeStartPoint: d1.startPoint,
+                    routeStartAddress: day1StartAddr || d.routeStartAddress,
+                  }
+                : d
+            );
+          });
+          setSelectedDay(1);
+          setCreateRouteLoading(false);
+          setRestOfDaysLoading(true);
+          const res2 = await fetch("/api/trip/remaining-days-leisure-route", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -385,17 +451,18 @@ export function Dashboard({
               travelers: tripData.travelers,
               durationDays: nDays,
               titleHint: regenerateHint,
+              lockedDay1Titles: d1.stops.map((s) => s.title),
             }),
           });
-          const data: unknown = await res.json();
-          if (!res.ok) {
+          const data2: unknown = await res2.json();
+          if (!res2.ok) {
             setCreateRouteError(
-              (data as { error?: string })?.error ??
-                "Не удалось создать маршруты"
+              (data2 as { error?: string })?.error ??
+                "Не удалось сгенерировать дни 2+ (день 1 сохранён)"
             );
             return;
           }
-          const { days: packed } = data as {
+          const { days: packed } = data2 as {
             days: {
               day: number;
               dayTitle: string;
@@ -419,8 +486,11 @@ export function Dashboard({
               )
             );
             const day1StartAddr = prev[0]?.routeStartAddress?.trim() ?? "";
-            const sharedPoint = m.get(1)?.startPoint;
+            const p1 = prev[0];
             return prev.map((d) => {
+              if (d.day === 1) {
+                return d;
+              }
               const p = m.get(d.day);
               if (!p) {
                 return d;
@@ -432,7 +502,8 @@ export function Dashboard({
                 title: p.dayTitle,
                 routeStops: p.stops,
                 items: [] as string[],
-                routeStartPoint: sharedPoint ?? d.routeStartPoint,
+                routeStartPoint:
+                  p.startPoint ?? p1?.routeStartPoint ?? d.routeStartPoint,
               };
             });
           });
@@ -478,6 +549,7 @@ export function Dashboard({
         );
       } finally {
         setCreateRouteLoading(false);
+        setRestOfDaysLoading(false);
       }
     },
     [
@@ -792,7 +864,7 @@ export function Dashboard({
 
               {Boolean(resolvedRouteStartRaw?.trim()) &&
                 !isEditingStart &&
-                !currentDayPlan.routeGenerated &&
+                canShowCreateRouteButton &&
                 (itineraryDays.length === 1 ||
                   Boolean(resolvedRouteStartRaw?.trim())) && (
                   <div className="mb-3">
@@ -801,10 +873,10 @@ export function Dashboard({
                       onClick={() => {
                         void createLeisureRoute();
                       }}
-                      disabled={createRouteLoading}
+                      disabled={createRouteLoading || restOfDaysLoading}
                       className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-medium text-[#1a1a1a] transition enabled:hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {createRouteLoading ? (
+                      {createRouteLoading || restOfDaysLoading ? (
                         <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                       ) : null}
                       Создать маршрут
@@ -815,6 +887,14 @@ export function Dashboard({
               {createRouteError ? (
                 <p className="mb-2 text-xs text-red-500">{createRouteError}</p>
               ) : null}
+
+              {createRouteLoading &&
+                !restOfDaysLoading &&
+                hasAnyConfirmedDayAddress && (
+                  <div className="min-h-0 w-full min-w-0 flex-1">
+                    <RouteGenerationWalkLoader active={createRouteLoading} />
+                  </div>
+                )}
 
                   {currentDayPlan.routeGenerated &&
                 (currentDayPlan.routeStops?.length ?? 0) > 0 && (
@@ -887,9 +967,7 @@ export function Dashboard({
                     </div>
                   )}
 
-                  {[...(currentDayPlan.routeStops ?? [])]
-                    .sort((a, b) => a.order - b.order)
-                    .map((stop, idx) => {
+                  {sortedRouteStopsForDialog.map((stop, idx) => {
                       const listIndex = idx + 1;
                       return (
                         <div
@@ -899,12 +977,10 @@ export function Dashboard({
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
-                              setMapRouteFocus({ kind: "stop", id: stop.id });
+                              setDayStopsDetailOpen(true);
                             }
                           }}
-                          onClick={() =>
-                            setMapRouteFocus({ kind: "stop", id: stop.id })
-                          }
+                          onClick={() => setDayStopsDetailOpen(true)}
                           className="relative flex cursor-pointer gap-2.5 rounded-xl border border-gray-100 bg-gray-50/40 p-2.5 transition hover:border-[#4ECDC4]/40"
                         >
                           <span
@@ -935,22 +1011,58 @@ export function Dashboard({
                               </p>
                             </div>
                             <div
-                              className="flex flex-wrap items-center gap-x-3 gap-y-0.5"
+                              className="mt-0.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5"
                               style={{ fontSize: "12px", color: "#6b7280" }}
                             >
-                              <span className="inline-flex items-center gap-0.5">
-                                <Star
-                                  className="h-3.5 w-3.5 shrink-0"
-                                  style={{ color: "#f5a623" }}
+                              <div className="inline-flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                                <span className="inline-flex items-center gap-0.5">
+                                  <Star
+                                    className="h-3.5 w-3.5 shrink-0"
+                                    style={{ color: "#f5a623" }}
+                                  />
+                                  {stop.rating.toFixed(1)}
+                                </span>
+                                <span
+                                  className="shrink-0 font-medium"
+                                  style={{ color: "#1a1a1a" }}
+                                >
+                                  {stop.estimatedCost}
+                                </span>
+                              </div>
+                              <div className="ml-auto flex shrink-0 items-center gap-2">
+                                <Image
+                                  src="/icons/map-route.svg"
+                                  alt=""
+                                  width={18}
+                                  height={18}
+                                  className="h-4 w-4 shrink-0 opacity-90"
                                 />
-                                {stop.rating.toFixed(1)}
-                              </span>
-                              <span>{stop.estimatedCost}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMapRouteFocus({ kind: "stop", id: stop.id });
+                                  }}
+                                  className="inline-flex shrink-0 items-center rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-[#1a1a1a] transition hover:border-[#4ECDC4]/50 hover:bg-[#4ECDC4]/5"
+                                >
+                                  На карте
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
                       );
                     })}
+                  <DayStopsDetailDialog
+                    open={dayStopsDetailOpen}
+                    onOpenChange={setDayStopsDetailOpen}
+                    dayTitle={currentDayPlan.title?.trim() || `День ${selectedDay}`}
+                    stops={sortedRouteStopsForDialog}
+                    onFocusStopOnMap={(id) => {
+                      setDayStopsDetailOpen(false);
+                      setMapRouteFocus({ kind: "stop", id });
+                    }}
+                  />
                 </div>
                 )}
             </div>

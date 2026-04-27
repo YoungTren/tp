@@ -53,6 +53,24 @@ const estimatedCost = z.preprocess(
   z.string()
 );
 
+const factLine = (s: string, i: number) => {
+  const t = s.trim();
+  if (t.length > 0) return t;
+  return `Короткий факт ${i + 1} о месте.`;
+};
+
+/** Ровно 3 факта; недостающие подпираем, лишние обрезаем. */
+const interestingFactsThree = z.preprocess(
+  (v) => {
+    if (!Array.isArray(v)) {
+      return [factLine("", 0), factLine("", 1), factLine("", 2)];
+    }
+    const lines = v.map((x) => String(x ?? "").trim());
+    return [0, 1, 2].map((i) => factLine(lines[i] ?? "", i));
+  },
+  z.tuple([z.string().min(1), z.string().min(1), z.string().min(1)])
+);
+
 /** Один пункт дневного пешего маршрута (с модели). */
 export const dayLeisureModelStopSchema = z.object({
   title: looseString("Место"),
@@ -66,6 +84,7 @@ export const dayLeisureModelStopSchema = z.object({
   lon: wgsLon,
   rating: looseRating,
   estimatedCost,
+  interestingFacts: interestingFactsThree,
 });
 
 export type DayLeisureModelStop = z.infer<typeof dayLeisureModelStopSchema>;

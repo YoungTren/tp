@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import { motion } from "motion/react";
-import { Hash, MapPin, Plane } from "lucide-react";
+import { Hash, MapPin, Plane, Star } from "lucide-react";
 import { AppPageBackdrop } from "./app-page-backdrop";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { DayStopsDetailDialog } from "./day-stops-detail-dialog";
 import { buildDayRouteWgsPath } from "@/lib/day-route-path";
 import { toDisplayAddress } from "@/lib/format-address";
 import { capitalizePlaceName } from "@/lib/format-place";
@@ -38,6 +40,7 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
   const itineraryDays = trip.plan.dayPlans;
   const [selectedDay, setSelectedDay] = useState(1);
   const [mapRouteFocus, setMapRouteFocus] = useState<MapRouteFocus>(null);
+  const [dayStopsDetailOpen, setDayStopsDetailOpen] = useState(false);
 
   const currentDayPlan = useMemo((): DayPlan => {
     if (!itineraryDays.length) {
@@ -86,6 +89,16 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
       }),
     [mapRouteStartPoint, currentDayPlan.routeStops]
   );
+
+  const sortedRouteStopsForDialog = useMemo(
+    () =>
+      [...(currentDayPlan.routeStops ?? [])].sort((a, b) => a.order - b.order),
+    [currentDayPlan.routeStops]
+  );
+
+  useEffect(() => {
+    setDayStopsDetailOpen(false);
+  }, [selectedDay]);
 
   const emptyMapPoints = useMemo<YandexMapPoint[]>(() => [], []);
   const { mapCenter } = trip.plan;
@@ -247,19 +260,16 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
             ) : null}
             {currentDayPlan.routeStops && currentDayPlan.routeStops.length > 0 ? (
               <div className="space-y-2.5">
-                {currentDayPlan.routeStops
-                  .slice()
-                  .sort((a, b) => a.order - b.order)
-                  .map((stop, idx) => (
+                {sortedRouteStopsForDialog.map((stop, idx) => (
                     <div
                       key={stop.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => setMapRouteFocus({ kind: "stop", id: stop.id })}
+                      onClick={() => setDayStopsDetailOpen(true)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          setMapRouteFocus({ kind: "stop", id: stop.id });
+                          setDayStopsDetailOpen(true);
                         }
                       }}
                       className="relative flex cursor-pointer gap-2.5 rounded-xl border border-gray-100 bg-gray-50/40 p-2.5 transition hover:border-[#4ECDC4]/40"
@@ -275,7 +285,7 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
                         alt={stop.title}
                         className="h-24 w-24 shrink-0 rounded-lg object-cover"
                       />
-                      <div>
+                      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                         <p
                           className="line-clamp-2 text-sm font-semibold"
                           style={{ color: "#1a1a1a" }}
@@ -288,9 +298,52 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
                         >
                           {stop.description}
                         </p>
+                        <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-[12px] text-gray-500">
+                          <div className="inline-flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                            <span className="inline-flex items-center gap-0.5">
+                              <Star
+                                className="h-3.5 w-3.5 shrink-0"
+                                style={{ color: "#f5a623" }}
+                              />
+                              {stop.rating.toFixed(1)}
+                            </span>
+                            <span className="shrink-0 font-medium text-[#1a1a1a]">
+                              {stop.estimatedCost}
+                            </span>
+                          </div>
+                          <div className="ml-auto flex shrink-0 items-center gap-2">
+                            <Image
+                              src="/icons/map-route.svg"
+                              alt=""
+                              width={18}
+                              height={18}
+                              className="h-4 w-4 shrink-0 opacity-90"
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMapRouteFocus({ kind: "stop", id: stop.id });
+                              }}
+                              className="inline-flex shrink-0 items-center rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-[#1a1a1a] transition hover:border-[#4ECDC4]/50 hover:bg-[#4ECDC4]/5"
+                            >
+                              На карте
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ))}
+                <DayStopsDetailDialog
+                  open={dayStopsDetailOpen}
+                  onOpenChange={setDayStopsDetailOpen}
+                  dayTitle={currentDayPlan.title?.trim() || `День ${selectedDay}`}
+                  stops={sortedRouteStopsForDialog}
+                  onFocusStopOnMap={(id) => {
+                    setDayStopsDetailOpen(false);
+                    setMapRouteFocus({ kind: "stop", id });
+                  }}
+                />
               </div>
             ) : (
               <p className="text-sm text-gray-500">

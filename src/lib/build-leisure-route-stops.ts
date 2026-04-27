@@ -52,6 +52,7 @@ export const buildLeisureRouteStopsFromModel = async (args: {
       lat: s.lat,
       lon: s.lon,
       image,
+      interestingFacts: s.interestingFacts,
     });
   }
   return stops;
