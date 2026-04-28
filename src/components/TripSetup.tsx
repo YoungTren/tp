@@ -1,4 +1,7 @@
+"use client";
+
 import { useState } from "react";
+import Image from "next/image";
 import { motion } from "motion/react";
 import { Plane, MapPin } from "lucide-react";
 import { capitalizePlaceName } from "@/lib/format-place";
@@ -6,7 +9,6 @@ import { normalizeDurationDays } from "@/lib/trip-dates";
 import { buildPlaceholderTripPlan } from "@/lib/placeholder-trip-plan";
 import { TRAVEL_HERO_BACKGROUND_SRC } from "@/lib/travel-hero-bg";
 import type { TripData, TripFormFields } from "@/types/trip";
-import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 interface TripSetupProps {
   onComplete: (data: TripData) => void;
@@ -36,24 +38,38 @@ export function TripSetup({ onComplete }: TripSetupProps) {
     onComplete({ ...fields, plan: buildPlaceholderTripPlan(fields) });
   };
 
+  const glassPanelStyle = {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    backdropFilter: "blur(24px)",
+    WebkitBackdropFilter: "blur(24px)",
+  } as const;
+
   return (
     <div className="relative h-screen w-screen overflow-hidden">
-      <ImageWithFallback
-        src={TRAVEL_HERO_BACKGROUND_SRC}
-        alt="Travel background"
-        className="absolute inset-0 h-full w-full object-cover"
-        loading="eager"
-        fetchPriority="high"
-      />
-      <div className="absolute inset-0 bg-black/20" />
+      <div className="absolute inset-0 z-0">
+        <Image
+          src={TRAVEL_HERO_BACKGROUND_SRC}
+          alt=""
+          fill
+          priority
+          fetchPriority="high"
+          sizes="100vw"
+          className="object-cover"
+        />
+      </div>
+      <div className="absolute inset-0 z-[1] bg-black/20" />
 
       <div className="relative z-10 flex h-full items-center justify-center px-4 p-3 sm:p-4">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
-          className="w-full max-w-[420px] rounded-3xl border border-white/20 bg-white/10 p-6 shadow-2xl backdrop-blur-xl sm:p-10"
+          className="w-full max-w-[420px]"
         >
+          <div
+            className="rounded-3xl border border-white/20 p-6 shadow-2xl sm:p-10"
+            style={glassPanelStyle}
+          >
           <div className="mb-6 sm:mb-8 flex items-center gap-2.5">
             <div
               className="flex h-10 w-10 items-center justify-center rounded-xl"
@@ -136,6 +152,7 @@ export function TripSetup({ onComplete }: TripSetupProps) {
               Создать маршрут
             </button>
           </form>
+          </div>
         </motion.div>
       </div>
     </div>
