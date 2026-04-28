@@ -16,6 +16,8 @@ import {
   resolveTripRouteStartAddress,
   resolveTripRouteStartPoint,
 } from "@/lib/itinerary-route-start";
+import { getStopCardTeaser } from "@/lib/leisure-facts";
+import { formatEstimatedCostSumOrFree } from "@/lib/place-price-hint";
 import type { MapRouteFocus, YandexMapPoint } from "./yandex-trip-map";
 import type { DayPlan, TripData } from "@/types/trip";
 
@@ -41,6 +43,9 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
   const [selectedDay, setSelectedDay] = useState(1);
   const [mapRouteFocus, setMapRouteFocus] = useState<MapRouteFocus>(null);
   const [dayStopsDetailOpen, setDayStopsDetailOpen] = useState(false);
+  const [dayStopsInitialStopId, setDayStopsInitialStopId] = useState<
+    string | null
+  >(null);
 
   const currentDayPlan = useMemo((): DayPlan => {
     if (!itineraryDays.length) {
@@ -96,8 +101,11 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
     [currentDayPlan.routeStops]
   );
 
+  const manyDayTabs = itineraryDays.length > 7;
+
   useEffect(() => {
     setDayStopsDetailOpen(false);
+    setDayStopsInitialStopId(null);
   }, [selectedDay]);
 
   const emptyMapPoints = useMemo<YandexMapPoint[]>(() => [], []);
@@ -219,33 +227,53 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
           animate={{ opacity: 1, x: 0 }}
           className="order-2 min-h-0 min-w-0 flex-1 lg:order-3"
         >
-          <div className="flex h-full min-h-0 max-h-[50vh] flex-col overflow-y-auto rounded-2xl bg-white p-5 shadow-sm lg:max-h-none">
+          <div className="flex h-full min-h-0 max-h-[50vh] flex-col overflow-y-auto [scrollbar-gutter:stable] rounded-2xl bg-white p-5 pr-6 shadow-sm lg:max-h-none">
             {itineraryDays.some((d) => d.routeStartAddress?.trim()) ? (
-              <div className="mb-3 flex flex-wrap items-center gap-1" role="tablist">
+              <div
+                className={`mb-3 flex gap-1 sm:gap-1.5 ${
+                  manyDayTabs ? "items-start" : "items-center"
+                }`}
+                role="tablist"
+              >
                 <span
-                  className="mr-1 shrink-0"
-                  style={{ fontSize: "15px", fontWeight: 600, color: "#1a1a1a" }}
+                  className={`shrink-0 text-[13px] font-semibold text-[#1a1a1a] ${
+                    manyDayTabs ? "pt-0.5 leading-6" : "leading-6"
+                  }`}
                 >
                   День
                 </span>
-                {itineraryDays.map((d) => (
-                  <button
-                    key={d.day}
-                    type="button"
-                    onClick={() => {
-                      setSelectedDay(d.day);
-                      setMapRouteFocus(null);
-                    }}
-                    className="rounded-lg px-2.5 py-1.5 text-sm font-medium transition"
-                    style={
-                      selectedDay === d.day
-                        ? { backgroundColor: "#4ECDC4", color: "white" }
-                        : { color: "#555" }
-                    }
-                  >
-                    {d.day}
-                  </button>
-                ))}
+                <div
+                  className={
+                    manyDayTabs
+                      ? "grid min-w-0 flex-1 gap-0.5 [grid-template-columns:repeat(7,minmax(2rem,1fr))] sm:gap-1"
+                      : "flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 sm:gap-1.5"
+                  }
+                >
+                  {itineraryDays.map((d) => (
+                    <button
+                      key={d.day}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDay(d.day);
+                        setMapRouteFocus(null);
+                      }}
+                      className={`flex h-6 items-center justify-center rounded border border-gray-200 bg-white text-[11px] font-semibold tabular-nums leading-none text-[#555] transition whitespace-nowrap ${
+                        manyDayTabs ? "w-full px-0.5" : "min-w-6 shrink-0 px-0.5"
+                      }`}
+                      style={
+                        selectedDay === d.day
+                          ? {
+                              backgroundColor: "#4ECDC4",
+                              color: "white",
+                              borderColor: "#4ECDC4",
+                            }
+                          : undefined
+                      }
+                    >
+                      {d.day}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : null}
             {resolvedRouteStartRaw?.trim() ? (
@@ -265,82 +293,95 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
                       key={stop.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => setDayStopsDetailOpen(true)}
+                      onClick={() => {
+                        setDayStopsInitialStopId(stop.id);
+                        setDayStopsDetailOpen(true);
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
+                          setDayStopsInitialStopId(stop.id);
                           setDayStopsDetailOpen(true);
                         }
                       }}
-                      className="relative flex cursor-pointer gap-2.5 rounded-xl border border-gray-100 bg-gray-50/40 p-2.5 transition hover:border-[#4ECDC4]/40"
+                      className="relative flex cursor-pointer gap-2.5 overflow-visible rounded-xl border border-gray-100 bg-gray-50/40 p-2.5 transition hover:border-[#4ECDC4]/40"
                     >
-                      <span
-                        className="absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white ring-2 ring-white/80"
-                        style={{ background: "#4ECDC4" }}
-                      >
-                        {idx + 1}
-                      </span>
-                      <ImageWithFallback
-                        src={stop.image}
-                        alt={stop.title}
-                        className="h-24 w-24 shrink-0 rounded-lg object-cover"
-                      />
-                      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <div className="shrink-0 pl-3.5 pt-3.5">
+                        <div className="relative h-24 w-24">
+                        <div className="h-full w-full overflow-hidden rounded-lg">
+                          <ImageWithFallback
+                            src={stop.image}
+                            alt={stop.title}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <span
+                          className="absolute left-0 top-0 z-20 flex h-7 min-w-[1.75rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full px-1 text-xs font-bold tabular-nums leading-none text-white shadow-md ring-2 ring-white whitespace-nowrap"
+                          style={{ background: "#4ECDC4" }}
+                        >
+                          {idx + 1}
+                        </span>
+                        </div>
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-3.5">
                         <p
-                          className="line-clamp-2 text-sm font-semibold"
+                          className="line-clamp-2 text-sm font-semibold leading-snug"
                           style={{ color: "#1a1a1a" }}
                         >
                           {stop.title}
                         </p>
-                        <p
-                          className="mt-0.5 line-clamp-3 text-xs leading-relaxed"
-                          style={{ color: "#555" }}
-                        >
-                          {stop.description}
-                        </p>
-                        <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-[12px] text-gray-500">
-                          <div className="inline-flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-                            <span className="inline-flex items-center gap-0.5">
-                              <Star
-                                className="h-3.5 w-3.5 shrink-0"
-                                style={{ color: "#f5a623" }}
-                              />
-                              {stop.rating.toFixed(1)}
-                            </span>
-                            <span className="shrink-0 font-medium text-[#1a1a1a]">
-                              {stop.estimatedCost}
-                            </span>
-                          </div>
-                          <div className="ml-auto flex shrink-0 items-center gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-[12px] text-gray-500">
+                          <span className="inline-flex items-center gap-0.5">
+                            <Star
+                              className="h-3.5 w-3.5 shrink-0"
+                              style={{ color: "#f5a623" }}
+                            />
+                            {stop.rating.toFixed(1)}
+                          </span>
+                          <span className="shrink-0 font-medium text-[#1a1a1a]">
+                            {formatEstimatedCostSumOrFree(stop.estimatedCost)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMapRouteFocus({ kind: "stop", id: stop.id });
+                            }}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-[#1a1a1a] transition hover:border-[#4ECDC4]/50 hover:bg-[#4ECDC4]/5"
+                          >
                             <Image
                               src="/icons/map-route.svg"
                               alt=""
-                              width={18}
-                              height={18}
-                              className="h-4 w-4 shrink-0 opacity-90"
+                              width={14}
+                              height={14}
+                              className="h-3.5 w-3.5 shrink-0"
                             />
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMapRouteFocus({ kind: "stop", id: stop.id });
-                              }}
-                              className="inline-flex shrink-0 items-center rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-[#1a1a1a] transition hover:border-[#4ECDC4]/50 hover:bg-[#4ECDC4]/5"
-                            >
-                              На карте
-                            </button>
-                          </div>
+                            Карта
+                          </button>
                         </div>
+                        <p
+                          className="line-clamp-2 text-xs font-normal leading-relaxed"
+                          style={{ color: "#555" }}
+                        >
+                          {getStopCardTeaser(stop)}
+                        </p>
                       </div>
                     </div>
                   ))}
                 <DayStopsDetailDialog
                   open={dayStopsDetailOpen}
-                  onOpenChange={setDayStopsDetailOpen}
+                  onOpenChange={(open) => {
+                    setDayStopsDetailOpen(open);
+                    if (!open) {
+                      setDayStopsInitialStopId(null);
+                    }
+                  }}
                   dayTitle={currentDayPlan.title?.trim() || `День ${selectedDay}`}
                   stops={sortedRouteStopsForDialog}
+                  initialStopId={dayStopsInitialStopId}
                   onFocusStopOnMap={(id) => {
                     setDayStopsDetailOpen(false);
+                    setDayStopsInitialStopId(null);
                     setMapRouteFocus({ kind: "stop", id });
                   }}
                 />

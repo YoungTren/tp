@@ -10,9 +10,11 @@ import {
 } from "@/lib/multi-day-leisure-schema";
 import { getServerEnv } from "@/lib/server-env";
 import {
+  geocodeStartAddressFirstMatch,
+  refPointNearCity,
   resolveStopsWithGeocodedCoords,
-  yandexGeocodeFirstMatch,
 } from "@/lib/yandex-geocode-server";
+import { LEISURE_CARD_TEASER_MAX } from "@/lib/day-leisure-schema";
 import { normalizeDurationDays } from "@/lib/trip-dates";
 import type { LeisureRouteStop } from "@/types/trip";
 
@@ -80,7 +82,7 @@ export async function POST(request: Request) {
 **Схема (только дни 2…${durationDays}):**
 {
   "days": [
-    { "day": 2, "dayTitle"?: string, "stops": [ { "title", "description", "category", "lat", "lon", "rating"?, "estimatedCost", "interestingFacts": [3 strings] } ] },
+    { "day": 2, "dayTitle"?: string, "stops": [ { "title", "description", "cardTeaser" (≤${LEISURE_CARD_TEASER_MAX} symb, 2 lines UI), "category", "lat": 0, "lon": 0, "rating"?, "estimatedCost", "interestingFacts": [3 strings] } ] },
     { "day": 3, ... }
   ]
 }
@@ -89,10 +91,10 @@ export async function POST(request: Request) {
 1) В массиве \`days\` **ровно ${expectedRemaining}** элементов, поля \`day\` = 2,3,…,${durationDays} — **по одному** на каждый номер, **без** **дня 1** и **без** **пропусков**.
 2) **НИ ОДНА** \`stops[i].title\` **не совпадает** с **уже** **занятыми** **дня 1** (см. список в запросе пользователя) и **не** **повторяется** **между** **днями** 2…${durationDays}. Уникальные строки \`title\`.
 3) **Раскидка** **интереса** **по** **дням** 2…${durationDays}: **не** **сваливай** **всё** **во** **2-й** **день**, **последний** **день** **не** **пустой** **по** **смыслу** (сильные места — **не** **только** **в** **одном** **дне**).
-4) **Каждый** **день** = **один** **пешеходный** **карман**; соседние \`stops\` **~0,7–2** км, без скачков 4+ км без причины; **каждое** **утро** **старт** **снова** **от** **«${startAddress}»** (первая остановка **дня** **логична** **к** **стартy**).
-5) Координаты WGS84 **реальные** для \`${to}\`, **дни** 2+ — **другие** **районы/кластеры**, **чем** **типично** **для** **первого** **дня** (если известен по городу), **без** **копий** **имён** **с** **дня 1**.
+4) **Каждый** **день** = **один** **пешеходный** **карман**; \`lat\`/\`lon\` = **0/0** (на **карту** **ставит** **сервер** **через** **Яндекс** **по** \`title\`); **соседние** **по** **смыслу** **~0,7–2** **км** **кластером**; **каждое** **утро** **старт** **с** **«${startAddress}»** (сервер **сортирует** **цепочки** **по** **координатам** **Яндекса**). 
+5) **Дни** 2+ — **другие** **районы/кластеры**, **чем** **день 1** **по** **смыслу**, **без** **копий** **имён** **с** **дня 1**. **WGS** **в** **JSON** **не** **подбирай**.
 6) **Каждый** **день:** \`stops\` **ровно 5** (только **осмотр**; **старт** **не** **в** **массиве**).
-7) \`estimatedCost\` и \`interestingFacts\` — как в мультидневной **полной** **схеме** (валюта региона, 3 факта).`;
+7) \`cardTeaser\` (**карточка** **списка**, **≤**${LEISURE_CARD_TEASER_MAX} **симв.,** **2** **строки** **в** **UI**), \`estimatedCost\` (**только** **цена/диапазон**, **без** **названия** **и** **скобок** **с** **пояснениями**) **и** \`interestingFacts\` — как в мультидневной **полной** **схеме** (валюта региона, 3 факта).`;
 
   const userPrompt = `**Уже занято (день 1) — НЕ повторять, НИКАКИХ дублей и «похожих» названий на эти объекты:**
 ${lockedList}
@@ -217,20 +219,24 @@ ${titleHint ? `- **Пожелания** (только **наследие**): ${t
     );
   }
   const toCity = to.trim();
-  const firstDayStart = await yandexGeocodeFirstMatch(
-    [
-      startAddress,
-      `${startAddress}, ${toCity}`,
-      `${toCity}, ${startAddress}`,
-      toCity,
-    ],
+  const startQueries = [
+    startAddress,
+    `${startAddress}, ${toCity}`,
+    `${toCity}, ${startAddress}`,
+    toCity,
+  ] as const;
+  let firstDayStart = await geocodeStartAddressFirstMatch(
+    startQueries,
     yandexKey
   );
+  if (!firstDayStart) {
+    firstDayStart = await refPointNearCity(toCity, yandexKey);
+  }
   if (!firstDayStart) {
     return NextResponse.json(
       {
         error:
-          "Не удалось определить координаты старта. Напишите полнее (например, «Via del Corso 10, Рим») и проверьте в кабинете Yandex, что у ключа включён пакет HTTP Geocoder. Иначе уточните адрес вручную.",
+          "Не удалось определить точку старта. Укажите улицу и дом, проверьте NEXT_PUBLIC_YANDEX_MAPS_API_KEY (Search и HTTP Geocoder). Координаты — WGS84 для Яндекс.Карт.",
       },
       { status: 400 }
     );
@@ -257,12 +263,8 @@ ${titleHint ? `- **Пожелания** (только **наследие**): ${t
         { status: 502 }
       );
     }
-    const ordered = orderSightsStopsByStartAndNearest(
-      sightStops,
-      firstDayStart
-    );
     const geocoded = await resolveStopsWithGeocodedCoords(
-      ordered,
+      sightStops,
       to,
       yandexKey
     );

@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_WORLD_MAP_CENTER } from "@/lib/trip-dates";
 import {
   type WgsPoint,
+  isPlausibleWgs,
   resolveItineraryPathForView,
 } from "@/lib/day-route-path";
 import { yandexMapsApiKey } from "@/lib/public-env";
@@ -16,6 +17,8 @@ export type YandexMapPoint = {
   title: string;
   /** Категория остановки дня — влияет на иконку (еда / достопр. / прочее) */
   category: string;
+  /** Номер на пине, если не совпадает с индексом в массиве (превью: пропуски геокода) */
+  sequence?: number;
 };
 
 export type MapRouteFocus =
@@ -168,7 +171,9 @@ export const YandexTripMap = ({
     () =>
       points.length === 0
         ? ""
-        : points.map((p) => `${p.id}:${p.lat},${p.lon}`).join("|"),
+        : points
+            .map((p) => `${p.id}:${p.lat},${p.lon}:${p.sequence ?? ""}`)
+            .join("|"),
     [points]
   );
   const stopsSig = useMemo(
@@ -194,7 +199,7 @@ export const YandexTripMap = ({
   useEffect(() => {
     const t = window.setTimeout(() => {
       setDebouncedToLabel(toLabel);
-    }, 380);
+    }, 150);
     return () => window.clearTimeout(t);
   }, [toLabel]);
 
@@ -283,6 +288,50 @@ export const YandexTripMap = ({
               });
             }
           };
+          /** После `ymaps.route` границы у коллекции часто пусты до отрисовки — подгоняем по WGS-точкам, затем догоняем getBounds. */
+          const fitToItineraryPath = (pathCoords: [number, number][]) => {
+            if (lockAutoBoundsRef.current) return;
+            const ymapsW = window.ymaps;
+            if (!ymapsW) return;
+            const valid = pathCoords.filter(
+              (p) =>
+                Number.isFinite(p[0]) &&
+                Number.isFinite(p[1]) &&
+                isPlausibleWgs(p[0]!, p[1]!)
+            );
+            if (valid.length === 0) return;
+            if (valid.length === 1) {
+              const p0 = valid[0]!;
+              map.setCenter(p0, Math.min(CITY_ZOOM, 14), { duration: 300 });
+              return;
+            }
+            const fromPoints = ymapsW.util?.bounds?.fromPoints;
+            if (typeof fromPoints === "function") {
+              try {
+                const b = fromPoints(valid);
+                if (b) {
+                  map.setBounds(b, {
+                    checkZoomRange: true,
+                    zoomMargin: 72,
+                    duration: 380,
+                  });
+                }
+              } catch {
+                /* ymaps.util.bounds */
+              }
+            }
+            window.setTimeout(() => {
+              if (lockAutoBoundsRef.current) return;
+              const b2 = map.geoObjects.getBounds();
+              if (b2) {
+                map.setBounds(b2, {
+                  checkZoomRange: true,
+                  zoomMargin: 72,
+                  duration: 0,
+                });
+              }
+            }, 220);
+          };
           if (cancelled) return;
 
           const hasItinerary = dayItineraryStops.length > 0;
@@ -294,14 +343,20 @@ export const YandexTripMap = ({
           ) {
             onItineraryPathRef.current?.(null);
             lastCityFlyKeyRef.current = null;
-            for (const p of points) {
+            points.forEach((p, idx) => {
+              const n = p.sequence ?? idx + 1;
+              const pin = getLeisureStopPlacemark(n, p.category);
               const placemark = new ymaps.Placemark(
                 [p.lat, p.lon],
-                { balloonContent: p.title, hintContent: p.title },
-                { preset: "islands#greenIcon", zIndex: 600 }
+                {
+                  iconContent: pin.iconContent,
+                  balloonContent: `${n}. ${p.title}`,
+                  hintContent: p.title,
+                },
+                { preset: pin.preset, zIndex: 600 + idx }
               );
               map.geoObjects.add(placemark);
-            }
+            });
             map.setCenter(
               [DEFAULT_WORLD_MAP_CENTER.lat, DEFAULT_WORLD_MAP_CENTER.lon],
               DEFAULT_WORLD_MAP_CENTER.zoom,
@@ -344,35 +399,38 @@ export const YandexTripMap = ({
                   lon: dayStartCoord[1]!,
                 }
               : null;
-            const viewPath = resolveItineraryPathForView({
+            const rawView = resolveItineraryPathForView({
               serverPath: serverWgs,
               routeStartPoint: dayRouteStartPoint,
               geocodedStart: gStart,
             });
             onItineraryPathRef.current?.(
-              viewPath.map(
-                (p) =>
-                  ({ lat: p.lat, lon: p.lon } as const)
-              )
+              rawView
+                .filter((p) => isPlausibleWgs(p.lat, p.lon))
+                .map((p) => ({ lat: p.lat, lon: p.lon } as const))
             );
-            const refLatLon: [number, number][] = viewPath.map((p) => [
-              p.lat,
-              p.lon,
-            ]);
+            const refLatLon: [number, number][] = rawView
+              .filter((p) => isPlausibleWgs(p.lat, p.lon))
+              .map((p) => [p.lat, p.lon] as [number, number]);
             const hasServerStart = Boolean(
               dayRouteStartPoint &&
                 Number.isFinite(dayRouteStartPoint.lat) &&
-                Number.isFinite(dayRouteStartPoint.lon)
+                Number.isFinite(dayRouteStartPoint.lon) &&
+                isPlausibleWgs(
+                  dayRouteStartPoint.lat,
+                  dayRouteStartPoint.lon
+                )
             );
-            const includeStartPoi = hasServerStart || viewPath.length > serverWgs.length;
+            const includeStartPoi =
+              hasServerStart || rawView.length > serverWgs.length;
 
             /** Те же вершины, что в refLatLon / ymaps.route — без рассинхрона с поинтами в маршруте */
             const wgsForStopIndex = (idx: number): WgsPoint => {
               if (includeStartPoi) {
-                const w = viewPath[idx + 1];
+                const w = rawView[idx + 1];
                 if (w) return w;
               } else {
-                const w = viewPath[idx];
+                const w = rawView[idx];
                 if (w) return w;
               }
               const p = dayItineraryStops[idx]!;
@@ -395,10 +453,14 @@ export const YandexTripMap = ({
             };
 
             const addPlacemarks = () => {
-              if (includeStartPoi && viewPath[0]) {
+              if (
+                includeStartPoi &&
+                rawView[0] &&
+                isPlausibleWgs(rawView[0].lat, rawView[0].lon)
+              ) {
                 const s0: [number, number] = [
-                  viewPath[0].lat,
-                  viewPath[0].lon,
+                  rawView[0].lat,
+                  rawView[0].lon,
                 ];
                 const sPm = new ymaps.Placemark(
                   s0,
@@ -411,10 +473,10 @@ export const YandexTripMap = ({
                 map.geoObjects.add(sPm);
               }
               dayItineraryStops.forEach((p, idx) => {
-                const w =
-                  Number.isFinite(p.lat) && Number.isFinite(p.lon)
-                    ? { lat: p.lat, lon: p.lon }
-                    : wgsForStopIndex(idx);
+                const w = isPlausibleWgs(p.lat, p.lon)
+                  ? { lat: p.lat, lon: p.lon }
+                  : wgsForStopIndex(idx);
+                if (!isPlausibleWgs(w.lat, w.lon)) return;
                 const n = idx + 1;
                 const pin = getLeisureStopPlacemark(n, p.category);
                 const pm = new ymaps.Placemark(
@@ -435,7 +497,15 @@ export const YandexTripMap = ({
 
             if (refLatLon.length < 2) {
               addPlacemarks();
-              fitToRoute();
+              const fb: [number, number][] =
+                refLatLon.length > 0
+                  ? refLatLon
+                  : dayItineraryStops
+                      .filter((s) =>
+                        isPlausibleWgs(s.lat, s.lon)
+                      )
+                      .map((s) => [s.lat, s.lon] as [number, number]);
+              fitToItineraryPath(fb);
               return;
             }
 
@@ -483,7 +553,7 @@ export const YandexTripMap = ({
               .then(() => {
                 if (cancelled) return;
                 addPlacemarks();
-                fitToRoute();
+                fitToItineraryPath(refLatLon);
               });
             return;
           }
@@ -531,14 +601,20 @@ export const YandexTripMap = ({
               map.geoObjects.add(startPm);
             }
           }
-          for (const p of points) {
+          points.forEach((p, idx) => {
+            const n = p.sequence ?? idx + 1;
+            const pin = getLeisureStopPlacemark(n, p.category);
             const placemark = new ymaps.Placemark(
               [p.lat, p.lon],
-              { balloonContent: p.title, hintContent: p.title },
-              { preset: "islands#greenIcon", zIndex: 600 }
+              {
+                iconContent: pin.iconContent,
+                balloonContent: `${n}. ${p.title}`,
+                hintContent: p.title,
+              },
+              { preset: pin.preset, zIndex: 600 + idx }
             );
             map.geoObjects.add(placemark);
-          }
+          });
           const hasDayLeisureOnMap =
             dayStopsForRaceGuardRef.current.length > 0 ||
             dayWgsForRaceGuardRef.current.length > 0;
@@ -547,7 +623,9 @@ export const YandexTripMap = ({
           if (dayFocus && dayStartCoord) {
             map.setCenter(dayStartCoord, FOCUS_ZOOM, { duration: 0 });
           } else if (focusOnDestinationOnly) {
-            if (!toCoord) {
+            if (points.length > 0) {
+              fitToRoute();
+            } else if (!toCoord) {
               fitToRoute();
             } else {
               const k = debouncedToLabel?.trim() ?? "";

@@ -25,7 +25,10 @@ declare global {
           removeAll: () => void;
           getBounds: () => GeoBounds | null;
         };
-        setBounds: (bounds: GeoBounds, options?: { checkZoomRange?: boolean; zoomMargin?: number }) => void;
+        setBounds: (
+          bounds: GeoBounds,
+          options?: { checkZoomRange?: boolean; zoomMargin?: number; duration?: number }
+        ) => void;
         setCenter: (center: [number, number], zoom?: number, options?: { duration?: number }) => void;
       };
       Placemark: new (

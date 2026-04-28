@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { TripSetup } from "@/components/TripSetup";
 import type { TripData } from "@/types/trip";
 import { Dashboard } from "@/components/Dashboard";
@@ -23,9 +23,9 @@ export const TravelPlannerApp = () => {
     setScreen("dashboard");
   };
 
-  const updateTripData = (next: (prev: TripData) => TripData) => {
+  const updateTripData = useCallback((next: (prev: TripData) => TripData) => {
     setTripData((p) => (p ? next(p) : p));
-  };
+  }, []);
 
   const handleLogout = () => {
     setScreen("setup");

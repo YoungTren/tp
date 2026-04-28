@@ -54,14 +54,17 @@ const BARCELONA: CityAttractionPreview[] = [
   { id: "b4", title: "Арх де Триомф, Барселона", image: U("photo-1540959733332-eab4deabeeaf") },
 ];
 
-/** Без жёстких «чужих» названий: реальные места по городу даст CSE, раз города нет в пресетах. */
-const DEFAULT_PREVIEW: CityAttractionPreview[] = [
-  { id: "d1", title: "Главная площадь", image: U("photo-1476514525535-07fb3b4ae5f1") },
-  { id: "d2", title: "Исторический центр", image: U("photo-1526779259212-939b68261c6a") },
-  { id: "d3", title: "Городской парк", image: U("photo-1507525428034-b723cf961d5e") },
-  { id: "d4", title: "Главный собор", image: U("photo-1502602898657-3e91760cbb34") },
-  { id: "d5", title: "Набережная", image: U("photo-1529154036614-0487d8ce89f5") },
-];
+/** Поисковые подписи с названием города, чтобы CSE/Places не подтягивали картинки «не того» места. */
+const defaultPreviewForCity = (destination: string): CityAttractionPreview[] => {
+  const c = destination.trim() || "город";
+  return [
+    { id: "d1", title: `Исторический центр, ${c}`, image: U("photo-1476514525535-07fb3b4ae5f1") },
+    { id: "d2", title: `Достопримечательности ${c}`, image: U("photo-1526779259212-939b68261c6a") },
+    { id: "d3", title: `Старый город, ${c}`, image: U("photo-1507525428034-b723cf961d5e") },
+    { id: "d4", title: `Главная площадь, ${c}`, image: U("photo-1502602898657-3e91760cbb34") },
+    { id: "d5", title: `Панорама, ${c}`, image: U("photo-1529154036614-0487d8ce89f5") },
+  ];
+};
 
 const PRESET_RULES: { test: (n: string) => boolean; items: CityAttractionPreview[] }[] = [
   { test: (n) => /рим|rome|roma|рім/i.test(n), items: ROME },
@@ -81,13 +84,13 @@ const norm = (s: string) =>
 
 const resolvePreset = (destination: string): CityAttractionPreview[] => {
   const n = norm(destination);
-  if (n.length === 0) return DEFAULT_PREVIEW;
+  if (n.length === 0) return defaultPreviewForCity("город");
   for (const rule of PRESET_RULES) {
     if (rule.test(n)) {
       return rule.items;
     }
   }
-  return DEFAULT_PREVIEW;
+  return defaultPreviewForCity(destination);
 };
 
 /**

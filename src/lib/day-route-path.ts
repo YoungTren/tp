@@ -3,6 +3,15 @@ import type { LeisureRouteStop } from "@/types/trip";
 export type WgsPoint = { readonly lat: number; readonly lon: number };
 
 /**
+ * (0,0) в океане — часто «заглушка» при сбое геокода; в цепочке WGS она
+ * растягивает границы карты на весь мир.
+ */
+export const isPlausibleWgs = (lat: number, lon: number): boolean =>
+  Number.isFinite(lat) &&
+  Number.isFinite(lon) &&
+  (Math.abs(lat) > 1e-5 || Math.abs(lon) > 1e-5);
+
+/**
  * Та же цепочка, что в API: старт (если есть) + остановки по `order` —
  * для ссылки yandex.ru/maps и пешеходного multiroute в виджете.
  */
@@ -11,11 +20,16 @@ export const buildDayRouteWgsPath = (args: {
   routeStops?: Pick<LeisureRouteStop, "order" | "lat" | "lon">[] | null;
 }): WgsPoint[] => {
   const ordered = [...(args.routeStops ?? [])]
-    .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon))
+    .filter(
+      (s) =>
+        Number.isFinite(s.lat) &&
+        Number.isFinite(s.lon) &&
+        isPlausibleWgs(s.lat, s.lon)
+    )
     .sort((a, b) => a.order - b.order)
     .map((s) => ({ lat: s.lat, lon: s.lon } as const));
   const sp = args.routeStartPoint;
-  if (sp && Number.isFinite(sp.lat) && Number.isFinite(sp.lon)) {
+  if (sp && isPlausibleWgs(sp.lat, sp.lon)) {
     return [sp, ...ordered];
   }
   return ordered;
@@ -45,7 +59,10 @@ export const buildYandexMapsPedestrianRouteUrl = (
   path: readonly WgsPoint[]
 ): string | null => {
   const pts = path.filter(
-    (p) => Number.isFinite(p.lat) && Number.isFinite(p.lon)
+    (p) =>
+      Number.isFinite(p.lat) &&
+      Number.isFinite(p.lon) &&
+      isPlausibleWgs(p.lat, p.lon)
   );
   if (pts.length < 2) return null;
   const rtext = pts.map((p) => `${p.lat},${p.lon}`).join("~");

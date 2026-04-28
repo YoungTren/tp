@@ -39,9 +39,21 @@ export const resizeItineraryDays = (prev: DayPlan[], nextCount: number): DayPlan
     return prev.slice(0, nextCount).map((d, i) => ({ ...d, day: i + 1 }));
   }
   if (nextCount > prev.length) {
+    const base = prev[0];
+    const fromStart = base?.routeStartAddress?.trim()
+      ? {
+          routeStartAddress: base.routeStartAddress,
+          routeStartPoint: base.routeStartPoint,
+        }
+      : {};
     const out: DayPlan[] = prev.map((d, i) => ({ ...d, day: i + 1 }));
     for (let k = prev.length; k < nextCount; k += 1) {
-      out.push({ day: k + 1, title: `День ${k + 1}`, items: [] as string[] });
+      out.push({
+        day: k + 1,
+        title: `День ${k + 1}`,
+        items: [] as string[],
+        ...fromStart,
+      });
     }
     return out;
   }

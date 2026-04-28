@@ -9,6 +9,9 @@ export type CarouselSlide = {
   id: string;
   title: string;
   image: string;
+  /** Координаты POI (сервер) — совпадение с метками на карте */
+  lat?: number | null;
+  lon?: number | null;
 };
 
 type AttractionPhotoCarouselProps = {

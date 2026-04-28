@@ -51,11 +51,69 @@ export const fetchGooglePlacePriceHint = async (
   return priceLevelToLabel(pl, currencyForDestination(to));
 };
 
+const stripEstimatedCostDecorations = (raw: string): string => {
+  let s = raw.trim();
+  if (!s) return s;
+  s = s.replace(/^[^:：\n]{1,80}[:：]\s*/u, "");
+  s = s.replace(/\s*\([^)]*\)\s*$/g, "").trim();
+  s = s.replace(/\s*\([^)]*\)\s*$/g, "").trim();
+  return s;
+};
+
+/** Первый фрагмент вида «12 €», «~8–20 €», «от 15 €» в строке (в т.ч. внутри пояснения). */
+const extractPriceToken = (s: string): string | null => {
+  const t = s.replace(/\s+/g, " ");
+  const m = t.match(
+    /(?:от\s+)?~?\s*[\d\s,\u2013\u2014.]+(?:\s*[\u2013\u2014-]\s*[\d\s,\u2013\u2014.]+)?\s*(?:€|₽)(?:\s*\+)?/iu
+  );
+  return m?.[0]?.trim() ?? null;
+};
+
+const isFreeLabel = (s: string): boolean => {
+  const t = s.replace(/\s+/g, " ").trim();
+  if (!t) return false;
+  if (/^бесплатно$/i.test(t)) return true;
+  if (/^~0\s*€$|^0\s*€$|^~0\s*₽$|^0\s*₽$|^~0$/i.test(t)) return true;
+  return false;
+};
+
+/**
+ * Только сумма с валютой (€/₽) или «Бесплатно» — без пояснительного текста («входит в билет…»).
+ */
+export const formatEstimatedCostSumOrFree = (raw: string): string => {
+  const stripped = stripEstimatedCostDecorations(raw);
+  let s = stripped.replace(/\s+/g, " ").trim();
+  if (!s) return "~—";
+  if (isFreeLabel(s)) return "Бесплатно";
+  if (/^бесплатно$/i.test(s)) return "Бесплатно";
+
+  const token = extractPriceToken(s);
+  if (token) {
+    return token.replace(/\s+/g, " ").trim();
+  }
+
+  const compact = /^~?\s*[\d,.\s]+(?:\s*[\u2013\u2014-]\s*[\d,.\s]+)?\s*(?:€|₽)(?:\s*\+)?\s*$/iu;
+  if (compact.test(s)) {
+    return s.trim();
+  }
+
+  if (!/[€₽]/.test(s) && /бесплат|без\s*оплат|вход\s*свободн/i.test(s)) {
+    return "Бесплатно";
+  }
+
+  return "~—";
+};
+
+/** @deprecated Используйте formatEstimatedCostSumOrFree; оставлено для совместимости импортов. */
+export const normalizeEstimatedCost = (raw: string): string =>
+  formatEstimatedCostSumOrFree(raw);
+
 const looksLikeWeakCost = (s: string): boolean => {
   const n = s.trim();
   if (!n) return true;
-  if (n === "~— ₽" || n === "~— €") return true;
+  if (n === "~—" || n === "~— ₽" || n === "~— €") return true;
   if (/^бесплатно$/i.test(n)) return false;
+  if (/^~0\s*€$|^0\s*€$|^~0\s*₽$|^0\s*₽$/i.test(n)) return true;
   if (/~?\s*0\s*₽/i.test(n) || /~?\s*0\s*€/i.test(n)) return true;
   if (/~?\s*[—-]+\s*₽?\s*$/i.test(n) && !/\d/.test(n)) return true;
   return false;
@@ -63,10 +121,14 @@ const looksLikeWeakCost = (s: string): boolean => {
 
 /** Оставляем ответ модели, если он конкретный; иначе подставляем эвристику из карт. */
 export const mergeEstimatedCost = (model: string, places: string | null): string => {
-  const m = model.trim();
+  const m = formatEstimatedCostSumOrFree(model.trim());
   if (places && looksLikeWeakCost(m)) {
-    if (/^бесплатно$/i.test(places)) return "Бесплатно";
-    return places;
+    const p = formatEstimatedCostSumOrFree(places);
+    if (p === "Бесплатно" || /^бесплатно$/u.test(p)) return "Бесплатно";
+    return p;
   }
-  return m.length > 0 ? m : places ?? "~— ₽";
+  if (m.length > 0 && m !== "~—") {
+    return m;
+  }
+  return formatEstimatedCostSumOrFree(places ?? "") || "~— ₽";
 };

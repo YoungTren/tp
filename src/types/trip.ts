@@ -31,6 +31,8 @@ export type LeisureRouteStop = {
   lat: number;
   lon: number;
   image: string;
+  /** Анонс под карточку списка: ≤100 симв., рассчитан на 2 строки (DeepSeek) */
+  cardTeaser?: string;
   /** Три коротких интересных факта (с бэка; в старых планах может не быть) */
   interestingFacts?: readonly [string, string, string];
 };

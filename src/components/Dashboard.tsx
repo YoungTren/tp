@@ -1,18 +1,14 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { motion } from "motion/react";
 import {
-  Plane,
   MapPin,
   Plus,
   Loader2,
   MoreVertical,
   Share2,
   Star,
-  LogOut,
-  Settings,
-  Bell,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppPageBackdrop } from "./app-page-backdrop";
@@ -35,7 +31,14 @@ import {
   resolveTripRouteStartPoint,
 } from "@/lib/itinerary-route-start";
 import { getAttractionPanelItems } from "@/lib/city-attraction-preview";
-import { buildItineraryState, DEFAULT_WORLD_MAP_CENTER } from "@/lib/trip-dates";
+import { getStopCardTeaser } from "@/lib/leisure-facts";
+import { formatEstimatedCostSumOrFree } from "@/lib/place-price-hint";
+import {
+  buildItineraryState,
+  dayCountForItinerary,
+  DEFAULT_WORLD_MAP_CENTER,
+  resizeItineraryDays,
+} from "@/lib/trip-dates";
 import {
   AttractionPhotoCarousel,
   type CarouselSlide,
@@ -62,6 +65,142 @@ const YandexTripMap = dynamic(
 
 const MIN_DAYS = 1;
 
+const collectLockedStopTitlesForDay = (
+  days: DayPlan[],
+  exceptDay: number
+): string[] => {
+  const out: string[] = [];
+  for (const d of days) {
+    if (d.day === exceptDay) continue;
+    for (const s of d.routeStops ?? []) {
+      const t = s.title?.trim();
+      if (t) {
+        out.push(t);
+      }
+    }
+  }
+  return out;
+};
+
+const ItineraryDayHeaderBar = (props: {
+  className?: string;
+  itineraryDays: DayPlan[];
+  selectedDay: number;
+  onSelectDay: (day: number) => void;
+  onAddDay: () => void;
+  onRemoveLast: () => void;
+  showShareRoute?: boolean;
+  onShareRoute?: () => void;
+}) => {
+  const {
+    className,
+    itineraryDays,
+    selectedDay,
+    onSelectDay,
+    onAddDay,
+    onRemoveLast,
+    showShareRoute,
+    onShareRoute,
+  } = props;
+  const manyDays = itineraryDays.length > 7;
+  return (
+    <div
+      className={`flex w-full min-w-0 gap-1.5 ${
+        manyDays ? "items-start" : "items-center"
+      } ${className ?? "mb-3"}`}
+    >
+      <div
+        className={`flex min-w-0 flex-1 ${
+          manyDays
+            ? "items-start gap-1.5 sm:gap-2"
+            : "items-center gap-x-1.5 sm:gap-x-2"
+        }`}
+      >
+        <h3
+          className={`shrink-0 text-[13px] font-semibold text-[#1a1a1a] ${
+            manyDays ? "pt-0.5 leading-6" : "leading-6"
+          }`}
+        >
+          День
+        </h3>
+        <div
+          className={
+            manyDays
+              ? "grid min-w-0 flex-1 gap-0.5 [grid-template-columns:repeat(7,minmax(2rem,1fr))] sm:gap-1"
+              : "flex min-w-0 flex-1 flex-nowrap items-center gap-0.5"
+          }
+          role="tablist"
+          aria-label="Дни поездки"
+        >
+          {itineraryDays.map((d) => (
+            <button
+              key={d.day}
+              type="button"
+              role="tab"
+              aria-selected={selectedDay === d.day}
+              onClick={() => onSelectDay(d.day)}
+              className={`flex h-6 items-center justify-center rounded border border-gray-300 bg-white text-[11px] font-semibold tabular-nums leading-none text-[#1a1a1a] transition focus:outline-none focus:ring-2 focus:ring-[#4ECDC4]/50 whitespace-nowrap ${
+                manyDays ? "w-full px-0.5" : "min-w-6 shrink-0 px-0.5"
+              }`}
+              style={{
+                borderColor: selectedDay === d.day ? "#4ECDC4" : undefined,
+                backgroundColor: selectedDay === d.day ? "#4ECDC4" : undefined,
+                color: selectedDay === d.day ? "#fff" : undefined,
+              }}
+              title={`День ${d.day}`}
+            >
+              {d.day}
+            </button>
+          ))}
+        </div>
+      </div>
+      {showShareRoute && onShareRoute ? (
+        <button
+          type="button"
+          onClick={onShareRoute}
+          className="inline-flex h-6 shrink-0 items-center gap-0.5 rounded-lg border border-gray-100 bg-gray-50/40 px-1.5 text-[10px] font-medium text-gray-700 transition hover:border-[#4ECDC4]/30 hover:bg-gray-50/80 sm:gap-1 sm:px-2 sm:text-[11px]"
+          aria-label="Поделиться маршрутом"
+        >
+          <Share2
+            className="h-3 w-3 shrink-0"
+            style={{ color: "#4ECDC4" }}
+            aria-hidden
+          />
+          <span className="whitespace-nowrap">Маршрут</span>
+        </button>
+      ) : null}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100"
+            aria-label="Действия с днями"
+          >
+            <MoreVertical className="h-3.5 w-3.5" strokeWidth={2.25} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[11rem]">
+          <DropdownMenuItem
+            onSelect={() => {
+              onAddDay();
+            }}
+          >
+            Добавить день
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={itineraryDays.length <= MIN_DAYS}
+            onSelect={() => {
+              onRemoveLast();
+            }}
+          >
+            Удалить день
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+};
+
 interface DashboardProps {
   tripData: TripData;
   onTripDataChange: (next: (prev: TripData) => TripData) => void;
@@ -73,9 +212,9 @@ interface DashboardProps {
 export function Dashboard({
   tripData,
   onTripDataChange,
-  onLogout,
-  onOpenHistory,
-  onCreateNew,
+  onLogout: _onLogout,
+  onOpenHistory: _onOpenHistory,
+  onCreateNew: _onCreateNew,
 }: DashboardProps) {
   const [selectedDay, setSelectedDay] = useState(1);
   const [itineraryDays, setItineraryDays] = useState<DayPlan[]>(() =>
@@ -87,24 +226,53 @@ export function Dashboard({
   const departure = tripData.from || "Москва";
   const { mapCenter } = tripData.plan;
 
-  const destinationForTrip = useMemo(() => {
-    const raw = destinationInput.trim() || (tripData.to?.trim() ?? "") || "Рим";
-    return capitalizePlaceName(raw);
-  }, [destinationInput, tripData.to]);
+  /** Город из поля «Куда» (инлайн или из мастера) — без дефолта «Рим»; для карты и геокода. */
+  const cityForMap = useMemo(
+    () => (destinationInput.trim() || tripData.to?.trim() || "").trim(),
+    [destinationInput, tripData.to]
+  );
 
-  const destinationLabel = useMemo(() => {
-    const raw = destinationInput.trim() || (tripData.to?.trim() ?? "");
-    if (!raw) return "—";
+  const destinationForTrip = useMemo(() => {
+    const raw = cityForMap || "Рим";
     return capitalizePlaceName(raw);
-  }, [destinationInput, tripData.to]);
+  }, [cityForMap]);
 
   const mapCenterForView = useMemo(
     () =>
-      !destinationInput.trim()
+      !cityForMap
         ? { ...DEFAULT_WORLD_MAP_CENTER }
         : { ...mapCenter },
-    [destinationInput, mapCenter.lat, mapCenter.lon, mapCenter.zoom]
+    [cityForMap, mapCenter.lat, mapCenter.lon, mapCenter.zoom]
   );
+
+  useEffect(() => {
+    if (!cityForMap) return;
+    const ac = new AbortController();
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/geocode-city?city=${encodeURIComponent(cityForMap)}`,
+          { signal: ac.signal }
+        );
+        if (!res.ok) return;
+        const d = (await res.json()) as {
+          lat: number;
+          lon: number;
+          zoom: number;
+        };
+        onTripDataChange((p) => ({
+          ...p,
+          plan: {
+            ...p.plan,
+            mapCenter: { lat: d.lat, lon: d.lon, zoom: d.zoom },
+          },
+        }));
+      } catch {
+        /* abort or network */
+      }
+    })();
+    return () => ac.abort();
+  }, [cityForMap, onTripDataChange]);
 
   const setItineraryDaysAndParent = useCallback(
     (value: DayPlan[] | ((prev: DayPlan[]) => DayPlan[])) => {
@@ -129,9 +297,22 @@ export function Dashboard({
   const [isEditingStart, setIsEditingStart] = useState(false);
   const [createRouteLoading, setCreateRouteLoading] = useState(false);
   const [restOfDaysLoading, setRestOfDaysLoading] = useState(false);
+  const [routeGenFirstLegMs, setRouteGenFirstLegMs] = useState<number | null>(
+    null
+  );
+  /** EMA: грубая оценка длит. следующего «первого» ответа — в паре с firstLeg даёт ровный p ≈ t/T. */
+  const routeGenPaceMsRef = useRef(18_000);
+  const [routeGenPaceForRunMs, setRouteGenPaceForRunMs] = useState(18_000);
+  const [routeGenEpoch, setRouteGenEpoch] = useState(0);
+  const routeGenT0Ref = useRef(0);
+  const departureInlineInputRef = useRef<HTMLInputElement | null>(null);
+  const skipCreateLoadingInFinally = useRef(false);
   const [createRouteError, setCreateRouteError] = useState<string | null>(null);
   const [mapRouteFocus, setMapRouteFocus] = useState<MapRouteFocus>(null);
   const [dayStopsDetailOpen, setDayStopsDetailOpen] = useState(false);
+  const [dayStopsInitialStopId, setDayStopsInitialStopId] = useState<
+    string | null
+  >(null);
   /** viewPath с карты — совпадает с ymaps.route (после геокода старта при необходимости) */
   const [mapItineraryPath, setMapItineraryPath] = useState<
     readonly WgsPoint[] | null
@@ -172,8 +353,8 @@ export function Dashboard({
     [itineraryDays]
   );
 
-  const showStartLocationForm =
-    !resolvedRouteStartRaw?.trim() || isEditingStart;
+  /** Пустой старт: большая форма в колонке карты. Правка адреса — в карточке справа, без isEditingStart здесь. */
+  const showStartLocationForm = !resolvedRouteStartRaw?.trim();
 
   const showRouteOnMapInUi = Boolean(
     currentDayPlan.routeGenerated &&
@@ -257,6 +438,32 @@ export function Dashboard({
 
   const emptyMapPoints = useMemo<YandexMapPoint[]>(() => [], []);
 
+  /** Те же ориентиры, что в карусели (до генерации маршрута) — метки 1…n на карте. */
+  const previewAttractionMapPoints = useMemo<YandexMapPoint[]>(() => {
+    if (!showStartLocationForm || !sideAttractionSlides?.length) return [];
+    const out: YandexMapPoint[] = [];
+    for (let orderIdx = 0; orderIdx < sideAttractionSlides.length; orderIdx++) {
+      const s = sideAttractionSlides[orderIdx]!;
+      if (
+        s.lat == null ||
+        s.lon == null ||
+        !Number.isFinite(s.lat) ||
+        !Number.isFinite(s.lon)
+      ) {
+        continue;
+      }
+      out.push({
+        id: s.id,
+        lat: s.lat,
+        lon: s.lon,
+        title: s.title,
+        category: "достопримечательности",
+        sequence: orderIdx + 1,
+      });
+    }
+    return out;
+  }, [showStartLocationForm, sideAttractionSlides]);
+
   const copyYandexRouteUrl = useCallback(async () => {
     const fromMap = mapItineraryPath;
     const fromWhenServerSuffices =
@@ -294,7 +501,24 @@ export function Dashboard({
   }, [selectedDay]);
 
   useEffect(() => {
+    if (!isEditingStart) {
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      const el = departureInlineInputRef.current;
+      if (!el) {
+        return;
+      }
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [isEditingStart]);
+
+  useEffect(() => {
     setDayStopsDetailOpen(false);
+    setDayStopsInitialStopId(null);
   }, [selectedDay]);
 
   useEffect(() => {
@@ -328,7 +552,41 @@ export function Dashboard({
         }
       } catch {
         if (!ac.signal.aborted) {
-          setSideAttractionSlides(getAttractionPanelItems(city));
+          const base = getAttractionPanelItems(city);
+          setSideAttractionSlides(base);
+          void (async () => {
+            try {
+              const r = await fetch("/api/attraction-locations", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  city,
+                  items: base.map((p) => ({ id: p.id, title: p.title })),
+                }),
+                signal: ac.signal,
+              });
+              if (!r.ok || ac.signal.aborted) return;
+              const locJson: unknown = await r.json();
+              const locs = (locJson as { items: { id: string; lat: number | null; lon: number | null }[] })
+                .items;
+              const locById = new Map(
+                locs.map((x) => [x.id, x] as [string, (typeof locs)[number]])
+              );
+              if (ac.signal.aborted) return;
+              setSideAttractionSlides((prev) => {
+                if (!prev) return prev;
+                return prev.map((s) => {
+                  const l = locById.get(s.id);
+                  if (l && l.lat != null && l.lon != null) {
+                    return { ...s, lat: l.lat, lon: l.lon };
+                  }
+                  return s;
+                });
+              });
+            } catch {
+              /* сетевой сбой — остаются только фото-фолбэк без меток */
+            }
+          })();
         }
       } finally {
         if (!ac.signal.aborted) {
@@ -376,9 +634,30 @@ export function Dashboard({
     });
   }, [setItineraryDaysAndParent]);
 
-  const createLeisureRoute = useCallback(
-    async (regenerateHint?: string, startAddressOverride?: string) => {
-      const nDays = itineraryDays.length;
+  const generateItineraryDay = useCallback(
+    async (args: {
+      targetDay: number;
+      titleHint?: string;
+      startAddressOverride?: string;
+    }) => {
+      const { targetDay, titleHint, startAddressOverride } = args;
+      const targetN = dayCountForItinerary(
+        itineraryDays.length > 0
+          ? itineraryDays.length
+          : tripData.durationDays
+      );
+      const alignedItinerary = resizeItineraryDays(itineraryDays, targetN);
+      if (
+        alignedItinerary.length !== itineraryDays.length ||
+        alignedItinerary.length !==
+          dayCountForItinerary(tripData.durationDays)
+      ) {
+        setItineraryDaysAndParent(alignedItinerary);
+      }
+      const nDays = alignedItinerary.length;
+      if (targetDay < 1 || targetDay > nDays) {
+        return;
+      }
       const startForRequest = (() => {
         if (startAddressOverride?.trim()) {
           return startAddressOverride.trim();
@@ -394,122 +673,18 @@ export function Dashboard({
       if (nDays <= 1 && !startForRequest) {
         return;
       }
+      const lockedStopTitles =
+        nDays > 1
+          ? collectLockedStopTitlesForDay(alignedItinerary, targetDay)
+          : [];
       setCreateRouteError(null);
+      setRouteGenFirstLegMs(null);
+      setRouteGenPaceForRunMs(routeGenPaceMsRef.current);
+      routeGenT0Ref.current = performance.now();
+      setRouteGenEpoch((e) => e + 1);
       setCreateRouteLoading(true);
       setRestOfDaysLoading(false);
       try {
-        if (nDays > 1) {
-          const res1 = await fetch("/api/trip/day-leisure-route", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              to: destinationForTrip,
-              startAddress: startForRequest,
-              budget: tripData.budget,
-              travelers: tripData.travelers,
-              titleHint: regenerateHint,
-            }),
-          });
-          const data1: unknown = await res1.json();
-          if (!res1.ok) {
-            setCreateRouteError(
-              (data1 as { error?: string })?.error ?? "Не удалось создать маршрут 1-го дня"
-            );
-            return;
-          }
-          const d1 = data1 as {
-            dayTitle: string;
-            stops: LeisureRouteStop[];
-            startPoint?: { lat: number; lon: number };
-          };
-          setItineraryDaysAndParent((prev) => {
-            const day1StartAddr = prev[0]?.routeStartAddress?.trim() ?? "";
-            return prev.map((d) =>
-              d.day === 1
-                ? {
-                    ...d,
-                    routeGenerated: true,
-                    title: d1.dayTitle,
-                    routeStops: d1.stops,
-                    items: [] as string[],
-                    routeStartPoint: d1.startPoint,
-                    routeStartAddress: day1StartAddr || d.routeStartAddress,
-                  }
-                : d
-            );
-          });
-          setSelectedDay(1);
-          setCreateRouteLoading(false);
-          setRestOfDaysLoading(true);
-          const res2 = await fetch("/api/trip/remaining-days-leisure-route", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              to: destinationForTrip,
-              startAddress: startForRequest,
-              budget: tripData.budget,
-              travelers: tripData.travelers,
-              durationDays: nDays,
-              titleHint: regenerateHint,
-              lockedDay1Titles: d1.stops.map((s) => s.title),
-            }),
-          });
-          const data2: unknown = await res2.json();
-          if (!res2.ok) {
-            setCreateRouteError(
-              (data2 as { error?: string })?.error ??
-                "Не удалось сгенерировать дни 2+ (день 1 сохранён)"
-            );
-            return;
-          }
-          const { days: packed } = data2 as {
-            days: {
-              day: number;
-              dayTitle: string;
-              stops: LeisureRouteStop[];
-              startPoint?: { lat: number; lon: number };
-            }[];
-          };
-          setItineraryDaysAndParent((prev) => {
-            const m = new Map(
-              packed.map(
-                (x) =>
-                  [x.day, x] as [
-                    number,
-                    {
-                      day: number;
-                      dayTitle: string;
-                      stops: LeisureRouteStop[];
-                      startPoint?: { lat: number; lon: number };
-                    }
-                  ]
-              )
-            );
-            const day1StartAddr = prev[0]?.routeStartAddress?.trim() ?? "";
-            const p1 = prev[0];
-            return prev.map((d) => {
-              if (d.day === 1) {
-                return d;
-              }
-              const p = m.get(d.day);
-              if (!p) {
-                return d;
-              }
-              return {
-                ...d,
-                routeStartAddress: day1StartAddr || d.routeStartAddress,
-                routeGenerated: true,
-                title: p.dayTitle,
-                routeStops: p.stops,
-                items: [] as string[],
-                routeStartPoint:
-                  p.startPoint ?? p1?.routeStartPoint ?? d.routeStartPoint,
-              };
-            });
-          });
-          return;
-        }
-
         const res = await fetch("/api/trip/day-leisure-route", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -518,7 +693,12 @@ export function Dashboard({
             startAddress: startForRequest,
             budget: tripData.budget,
             travelers: tripData.travelers,
-            titleHint: regenerateHint,
+            titleHint,
+            lockedStopTitles,
+            dayInTrip:
+              nDays > 1
+                ? { current: targetDay, total: nDays }
+                : undefined,
           }),
         });
         const data: unknown = await res.json();
@@ -533,22 +713,46 @@ export function Dashboard({
           stops: LeisureRouteStop[];
           startPoint?: { lat: number; lon: number };
         };
-        setItineraryDaysAndParent((prev) =>
-          prev.map((d) =>
-            d.day === selectedDay
-              ? {
-                  ...d,
-                  routeGenerated: true,
-                  title: dayTitle,
-                  routeStops: stops,
-                  routeStartPoint: startPoint,
-                  items: [] as string[],
-                }
-              : d
-          )
-        );
+        setItineraryDaysAndParent((prev) => {
+          const p1 = prev.find((d) => d.day === 1);
+          return prev.map((d) => {
+            if (d.day !== targetDay) {
+              return d;
+            }
+            return {
+              ...d,
+              routeGenerated: true,
+              title: dayTitle,
+              routeStops: stops,
+              routeStartPoint:
+                startPoint ?? p1?.routeStartPoint ?? d.routeStartPoint,
+              items: [] as string[],
+            };
+          });
+        });
+        if (nDays > 1 && targetDay === 1) {
+          setSelectedDay(1);
+        }
+        setMapRouteFocus(null);
+        {
+          const legMs = Math.max(
+            1,
+            Math.round(performance.now() - routeGenT0Ref.current)
+          );
+          setRouteGenFirstLegMs(legMs);
+          routeGenPaceMsRef.current = Math.round(
+            0.4 * legMs + 0.6 * routeGenPaceMsRef.current
+          );
+          skipCreateLoadingInFinally.current = true;
+          setTimeout(() => {
+            setCreateRouteLoading(false);
+            skipCreateLoadingInFinally.current = false;
+          }, 0);
+        }
       } finally {
-        setCreateRouteLoading(false);
+        if (!skipCreateLoadingInFinally.current) {
+          setCreateRouteLoading(false);
+        }
         setRestOfDaysLoading(false);
       }
     },
@@ -557,9 +761,35 @@ export function Dashboard({
       startAddressForApi,
       destinationForTrip,
       tripData.budget,
+      tripData.durationDays,
       tripData.travelers,
-      selectedDay,
       setItineraryDaysAndParent,
+    ]
+  );
+
+  const createLeisureRoute = useCallback(
+    async (regenerateHint?: string, startAddressOverride?: string) => {
+      const targetN = dayCountForItinerary(
+        itineraryDays.length > 0
+          ? itineraryDays.length
+          : tripData.durationDays
+      );
+      const nDays = resizeItineraryDays(
+        itineraryDays,
+        targetN
+      ).length;
+      const targetDay = nDays > 1 ? 1 : selectedDay;
+      await generateItineraryDay({
+        targetDay,
+        titleHint: regenerateHint,
+        startAddressOverride,
+      });
+    },
+    [
+      itineraryDays,
+      tripData.durationDays,
+      selectedDay,
+      generateItineraryDay,
     ]
   );
 
@@ -581,71 +811,15 @@ export function Dashboard({
     void createLeisureRoute(undefined, t);
   }, [editingStartAddress, setItineraryDaysAndParent, createLeisureRoute]);
 
+  const cancelInlineStartEdit = useCallback(() => {
+    setIsEditingStart(false);
+    setEditingStartAddress(resolvedRouteStartRaw ?? "");
+    setMapRouteFocus(null);
+  }, [resolvedRouteStartRaw]);
+
   return (
     <div className="h-screen flex flex-col overflow-hidden relative">
       <AppPageBackdrop />
-
-      {/* Top bar */}
-      <header className="relative z-10 flex shrink-0 items-center justify-between border-b border-gray-200/60 bg-white px-4 md:px-8 py-3">
-        <div className="flex items-center gap-3 md:gap-6">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-xl"
-              style={{ backgroundColor: "#4ECDC4" }}
-            >
-              <Plane className="h-4.5 w-4.5 text-white" />
-            </div>
-            <span
-              className="hidden sm:inline"
-              style={{ fontSize: "18px", fontWeight: 600, color: "#1a1a1a" }}
-            >
-              TravelPlanner
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onCreateNew}
-              className="rounded-lg px-3 md:px-4 py-2 transition-all hover:scale-105"
-              style={{
-                backgroundColor: "#4ECDC4",
-                color: "white",
-                fontSize: "14px",
-                fontWeight: 500,
-              }}
-            >
-              Создать
-            </button>
-            <button
-              onClick={onOpenHistory}
-              className="rounded-lg border px-3 md:px-4 py-2 transition-all hover:bg-gray-50"
-              style={{
-                borderColor: "#e5e5e5",
-                color: "#555",
-                fontSize: "14px",
-                fontWeight: 500,
-              }}
-            >
-              История
-            </button>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 md:gap-3">
-          <button className="hidden sm:flex h-9 w-9 items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 transition-colors">
-            <Bell className="h-4.5 w-4.5" />
-          </button>
-          <button className="hidden sm:flex h-9 w-9 items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 transition-colors">
-            <Settings className="h-4.5 w-4.5" />
-          </button>
-          <button
-            onClick={onLogout}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 transition-colors"
-          >
-            <LogOut className="h-4.5 w-4.5" />
-          </button>
-        </div>
-      </header>
 
       {/* Main */}
       <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col overflow-hidden p-4 md:p-6">
@@ -699,7 +873,7 @@ export function Dashboard({
               ) : (
                 <>
                   {showRouteOnMapInUi ? (
-                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                    <div className="mb-4">
                       <h2
                         style={{
                           fontSize: "20px",
@@ -709,34 +883,8 @@ export function Dashboard({
                       >
                         Маршрут путешествия
                       </h2>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void copyYandexRouteUrl();
-                        }}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-gray-700 transition hover:bg-gray-50"
-                        style={{ fontSize: "13px", fontWeight: 500 }}
-                      >
-                        <Share2
-                          className="h-3.5 w-3.5"
-                          style={{ color: "#4ECDC4" }}
-                        />
-                        Поделиться
-                      </button>
                     </div>
                   ) : null}
-                  <div
-                    className="mb-4 flex items-center gap-2 text-gray-500"
-                    style={{ fontSize: "14px" }}
-                  >
-                    <MapPin className="h-4 w-4" style={{ color: "#4ECDC4" }} />
-                      <span>
-                      Назначение:{" "}
-                      <span style={{ fontWeight: 500, color: "#1a1a1a" }}>
-                        {destinationLabel}
-                      </span>
-                    </span>
-                  </div>
                 </>
               )}
 
@@ -744,7 +892,11 @@ export function Dashboard({
                 <div className="absolute inset-0 z-0 min-h-0 min-w-0">
                   <YandexTripMap
                     mapCenter={mapCenterForView}
-                    points={emptyMapPoints}
+                    points={
+                      showStartLocationForm
+                        ? previewAttractionMapPoints
+                        : emptyMapPoints
+                    }
                     fromLabel={departure}
                     toLabel={destinationForTrip}
                     dayRouteStartAddress={dayRouteStartForMap}
@@ -795,78 +947,32 @@ export function Dashboard({
               </div>
             ) : (
             <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col rounded-2xl bg-white p-5 shadow-sm">
-              {hasAnyConfirmedDayAddress && (
-                <div className="mb-3 flex w-full min-w-0 items-center gap-1.5">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
-                    <h3
-                      className="shrink-0"
-                      style={{ fontSize: "15px", fontWeight: 600, color: "#1a1a1a" }}
-                    >
-                      День
-                    </h3>
-                    <div
-                      className="flex min-w-0 max-w-full flex-1 flex-wrap content-center items-center gap-1"
-                      role="tablist"
-                      aria-label="Дни поездки"
-                    >
-                      {itineraryDays.map((d) => (
-                        <button
-                          key={d.day}
-                          type="button"
-                          role="tab"
-                          aria-selected={selectedDay === d.day}
-                          onClick={() => setSelectedDay(d.day)}
-                          className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-xs font-semibold leading-none text-[#1a1a1a] transition focus:outline-none focus:ring-2 focus:ring-[#4ECDC4]/50"
-                          style={{
-                            borderColor:
-                              selectedDay === d.day ? "#4ECDC4" : undefined,
-                            backgroundColor:
-                              selectedDay === d.day ? "#4ECDC4" : undefined,
-                            color: selectedDay === d.day ? "#fff" : undefined,
-                          }}
-                          title={`День ${d.day}`}
-                        >
-                          {d.day}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100"
-                        aria-label="Действия с днями"
-                      >
-                        <MoreVertical className="h-4 w-4" strokeWidth={2.25} />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-[11rem]">
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          addDay();
-                        }}
-                      >
-                        Добавить день
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={itineraryDays.length <= MIN_DAYS}
-                        onSelect={() => {
-                          removeLastDay();
-                        }}
-                      >
-                        Удалить день
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              )}
+              {hasAnyConfirmedDayAddress &&
+                !createRouteLoading &&
+                !(
+                  currentDayPlan.routeGenerated &&
+                  (currentDayPlan.routeStops?.length ?? 0) > 0
+                ) && (
+                  <ItineraryDayHeaderBar
+                    className="mb-3"
+                    itineraryDays={itineraryDays}
+                    selectedDay={selectedDay}
+                    onSelectDay={setSelectedDay}
+                    onAddDay={addDay}
+                    onRemoveLast={removeLastDay}
+                    showShareRoute={showRouteOnMapInUi}
+                    onShareRoute={() => {
+                      void copyYandexRouteUrl();
+                    }}
+                  />
+                )}
 
               {Boolean(resolvedRouteStartRaw?.trim()) &&
                 !isEditingStart &&
                 canShowCreateRouteButton &&
                 (itineraryDays.length === 1 ||
-                  Boolean(resolvedRouteStartRaw?.trim())) && (
+                  Boolean(resolvedRouteStartRaw?.trim())) &&
+                !(createRouteLoading && !restOfDaysLoading) && (
                   <div className="mb-3">
                     <button
                       type="button"
@@ -884,6 +990,29 @@ export function Dashboard({
                   </div>
                 )}
 
+              {Boolean(resolvedRouteStartRaw?.trim()) &&
+                !isEditingStart &&
+                !canShowCreateRouteButton &&
+                itineraryDays.length > 1 &&
+                !currentDayPlan.routeGenerated &&
+                !(createRouteLoading && !restOfDaysLoading) && (
+                  <div className="mb-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void generateItineraryDay({ targetDay: selectedDay });
+                      }}
+                      disabled={createRouteLoading || restOfDaysLoading}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-medium text-[#1a1a1a] transition enabled:hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {createRouteLoading || restOfDaysLoading ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                      ) : null}
+                      Создать
+                    </button>
+                  </div>
+                )}
+
               {createRouteError ? (
                 <p className="mb-2 text-xs text-red-500">{createRouteError}</p>
               ) : null}
@@ -891,78 +1020,130 @@ export function Dashboard({
               {createRouteLoading &&
                 !restOfDaysLoading &&
                 hasAnyConfirmedDayAddress && (
-                  <div className="min-h-0 w-full min-w-0 flex-1">
-                    <RouteGenerationWalkLoader active={createRouteLoading} />
+                  <div className="flex min-h-[12rem] w-full min-w-0 flex-1 flex-col self-stretch">
+                    <RouteGenerationWalkLoader
+                      key={routeGenEpoch}
+                      active={createRouteLoading}
+                      startTime={routeGenT0Ref.current}
+                      firstLegCompleteMs={routeGenFirstLegMs}
+                      paceDurationMs={routeGenPaceForRunMs}
+                    />
                   </div>
                 )}
 
                   {currentDayPlan.routeGenerated &&
                 (currentDayPlan.routeStops?.length ?? 0) > 0 && (
-                <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-0.5">
+                <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto [scrollbar-gutter:stable] pr-3">
+                  {hasAnyConfirmedDayAddress && !createRouteLoading && (
+                    <ItineraryDayHeaderBar
+                      className="mb-4"
+                      itineraryDays={itineraryDays}
+                      selectedDay={selectedDay}
+                      onSelectDay={setSelectedDay}
+                      onAddDay={addDay}
+                      onRemoveLast={removeLastDay}
+                      showShareRoute={showRouteOnMapInUi}
+                      onShareRoute={() => {
+                        void copyYandexRouteUrl();
+                      }}
+                    />
+                  )}
                   {Boolean((resolvedRouteStartRaw ?? "").trim()) && (
                     <div
-                      key="departure"
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setMapRouteFocus({ kind: "start" });
-                        }
-                      }}
-                      onClick={() => setMapRouteFocus({ kind: "start" })}
-                      className="relative flex cursor-pointer gap-2.5 rounded-xl border border-gray-100 bg-gray-50/40 p-2.5 transition hover:border-[#4ECDC4]/40"
+                      className="flex min-w-0 flex-wrap items-stretch gap-2"
+                      key="departure-row"
                     >
-                      <span
-                        className="absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full text-white shadow-md ring-2 ring-white/80"
-                        style={{ background: "#7E57C2" }}
-                        aria-label="Старт маршрута"
-                      >
-                        <MapPin
-                          className="h-3.5 w-3.5 text-white"
-                          strokeWidth={2.5}
-                        />
-                      </span>
-                      <div
-                        className="flex h-24 w-24 shrink-0 items-center justify-center rounded-lg border border-gray-200/90 bg-slate-50/90"
-                        aria-hidden
-                      >
-                        <MapPin
-                          className="h-12 w-12 drop-shadow-sm"
-                          style={{ color: "#d32f2f" }}
-                          fill="currentColor"
-                          strokeWidth={0}
+                      <div className="flex h-16 min-h-16 max-h-16 min-w-0 flex-1 items-stretch gap-2 rounded-lg border border-gray-100 bg-gray-50/40 p-2 transition hover:border-[#4ECDC4]/30 sm:h-14 sm:min-h-14 sm:max-h-14">
+                        <span
+                          className="flex h-8 w-8 shrink-0 self-center items-center justify-center rounded-full text-white shadow-sm"
+                          style={{ background: "#4ECDC4" }}
                           aria-hidden
-                        />
-                      </div>
-                      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                        <p
-                          className="text-[11px] font-medium"
-                          style={{ color: "#6b7280" }}
                         >
-                          Место отправления
-                        </p>
-                        <p
-                          className="line-clamp-2 pr-0.5 text-sm font-semibold"
-                          style={{ color: "#1a1a1a" }}
-                        >
-                          {toDisplayAddress(
-                            resolvedRouteStartRaw ?? ""
-                          )}
-                        </p>
-                        <div className="mt-auto flex flex-wrap justify-end pt-1.5">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsEditingStart(true);
-                              setMapRouteFocus(null);
-                            }}
-                            className="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-[#1a1a1a] transition hover:bg-gray-50"
-                          >
-                            Изменить
-                          </button>
-                        </div>
+                          <MapPin
+                            className="h-4 w-4 text-white"
+                            strokeWidth={2.5}
+                          />
+                        </span>
+                        {isEditingStart ? (
+                          <>
+                            <div className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden py-0.5">
+                              <input
+                                ref={departureInlineInputRef}
+                                type="text"
+                                value={editingStartAddress}
+                                onChange={(e) => setEditingStartAddress(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && editingStartAddress.trim()) {
+                                    e.preventDefault();
+                                    void confirmStartAndCreateRoute();
+                                  }
+                                  if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    cancelInlineStartEdit();
+                                  }
+                                }}
+                                autoComplete="street-address"
+                                aria-label="Адрес старта, Esc — отмена"
+                                placeholder="Адрес"
+                                className="h-8 min-h-0 w-full min-w-0 max-w-full rounded border-0 bg-white/70 px-1.5 font-sans text-sm font-normal leading-5 text-[#1a1a1a] shadow-none outline-none ring-0 transition placeholder:text-gray-400 focus:bg-white focus:ring-0 focus-visible:ring-0"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void confirmStartAndCreateRoute();
+                              }}
+                              disabled={
+                                !editingStartAddress.trim() || createRouteLoading
+                              }
+                              className="inline-flex h-8 min-h-8 min-w-[4.5rem] shrink-0 items-center justify-center gap-1 self-center rounded-lg border-0 bg-[#4ECDC4] px-2 text-[10px] font-medium leading-tight text-white transition enabled:hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {createRouteLoading ? (
+                                <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                              ) : null}
+                              Найти
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setMapRouteFocus({ kind: "start" });
+                                }
+                              }}
+                              onClick={() => setMapRouteFocus({ kind: "start" })}
+                              className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden py-0.5"
+                              aria-label="Старт маршрута на карте"
+                            >
+                              <p
+                                className="min-h-0 w-full truncate font-sans text-sm font-normal leading-5"
+                                style={{ color: "#1a1a1a" }}
+                              >
+                                {toDisplayAddress(
+                                  resolvedRouteStartRaw ?? ""
+                                )}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsEditingStart(true);
+                                setEditingStartAddress(
+                                  resolvedRouteStartRaw?.trim() ?? ""
+                                );
+                                setMapRouteFocus(null);
+                              }}
+                              className="inline-flex h-8 min-h-8 w-[5.4rem] min-w-[5.4rem] shrink-0 items-center justify-center self-center rounded-lg border border-gray-200 bg-white px-1.5 text-[10px] font-medium leading-tight text-[#1a1a1a] transition hover:bg-gray-50"
+                            >
+                              Изменить
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
@@ -977,89 +1158,97 @@ export function Dashboard({
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
+                              setDayStopsInitialStopId(stop.id);
                               setDayStopsDetailOpen(true);
                             }
                           }}
-                          onClick={() => setDayStopsDetailOpen(true)}
-                          className="relative flex cursor-pointer gap-2.5 rounded-xl border border-gray-100 bg-gray-50/40 p-2.5 transition hover:border-[#4ECDC4]/40"
+                          onClick={() => {
+                            setDayStopsInitialStopId(stop.id);
+                            setDayStopsDetailOpen(true);
+                          }}
+                          className="relative flex cursor-pointer gap-2.5 overflow-visible rounded-xl border border-gray-100 bg-gray-50/40 p-2.5 transition hover:border-[#4ECDC4]/40"
                         >
-                          <span
-                            className="absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/80"
-                            style={{ background: "#4ECDC4" }}
-                            aria-label={`Пункт ${listIndex} маршрута`}
-                          >
-                            {listIndex}
-                          </span>
-                          <ImageWithFallback
-                            src={stop.image}
-                            alt={stop.title}
-                            className="h-24 w-24 shrink-0 rounded-lg object-cover"
-                          />
-                          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                            <div>
-                              <p
-                                className="line-clamp-2 text-sm font-semibold"
+                          <div className="shrink-0 pl-3.5 pt-3.5">
+                            <div className="relative h-24 w-24">
+                            <div className="h-full w-full overflow-hidden rounded-lg">
+                              <ImageWithFallback
+                                src={stop.image}
+                                alt={stop.title}
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                            <span
+                              className="absolute left-0 top-0 z-20 flex h-7 min-w-[1.75rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full px-1 text-xs font-bold tabular-nums leading-none text-white shadow-md ring-2 ring-white whitespace-nowrap"
+                              style={{ background: "#4ECDC4" }}
+                              aria-label={`Пункт ${listIndex} маршрута`}
+                            >
+                              {listIndex}
+                            </span>
+                            </div>
+                          </div>
+                          <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-3.5">
+                            <p
+                              className="line-clamp-2 min-w-0 text-sm font-semibold leading-snug"
+                              style={{ color: "#1a1a1a" }}
+                            >
+                              {stop.title}
+                            </p>
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-[12px] text-gray-500">
+                              <span className="inline-flex items-center gap-0.5">
+                                <Star
+                                  className="h-3.5 w-3.5 shrink-0"
+                                  style={{ color: "#f5a623" }}
+                                />
+                                {stop.rating.toFixed(1)}
+                              </span>
+                              <span
+                                className="shrink-0 font-medium"
                                 style={{ color: "#1a1a1a" }}
                               >
-                                {stop.title}
-                              </p>
-                              <p
-                                className="mt-0.5 line-clamp-2 text-xs leading-relaxed"
-                                style={{ color: "#555" }}
+                                {formatEstimatedCostSumOrFree(stop.estimatedCost)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMapRouteFocus({ kind: "stop", id: stop.id });
+                                }}
+                                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-[#1a1a1a] transition hover:border-[#4ECDC4]/50 hover:bg-[#4ECDC4]/5"
                               >
-                                {stop.description}
-                              </p>
-                            </div>
-                            <div
-                              className="mt-0.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5"
-                              style={{ fontSize: "12px", color: "#6b7280" }}
-                            >
-                              <div className="inline-flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-                                <span className="inline-flex items-center gap-0.5">
-                                  <Star
-                                    className="h-3.5 w-3.5 shrink-0"
-                                    style={{ color: "#f5a623" }}
-                                  />
-                                  {stop.rating.toFixed(1)}
-                                </span>
-                                <span
-                                  className="shrink-0 font-medium"
-                                  style={{ color: "#1a1a1a" }}
-                                >
-                                  {stop.estimatedCost}
-                                </span>
-                              </div>
-                              <div className="ml-auto flex shrink-0 items-center gap-2">
                                 <Image
                                   src="/icons/map-route.svg"
                                   alt=""
-                                  width={18}
-                                  height={18}
-                                  className="h-4 w-4 shrink-0 opacity-90"
+                                  width={14}
+                                  height={14}
+                                  className="h-3.5 w-3.5 shrink-0"
                                 />
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setMapRouteFocus({ kind: "stop", id: stop.id });
-                                  }}
-                                  className="inline-flex shrink-0 items-center rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-[#1a1a1a] transition hover:border-[#4ECDC4]/50 hover:bg-[#4ECDC4]/5"
-                                >
-                                  На карте
-                                </button>
-                              </div>
+                                Карта
+                              </button>
                             </div>
+                            <p
+                              className="line-clamp-2 text-xs font-normal leading-relaxed"
+                              style={{ color: "#555" }}
+                            >
+                              {getStopCardTeaser(stop)}
+                            </p>
                           </div>
                         </div>
                       );
                     })}
                   <DayStopsDetailDialog
                     open={dayStopsDetailOpen}
-                    onOpenChange={setDayStopsDetailOpen}
+                    onOpenChange={(open) => {
+                      setDayStopsDetailOpen(open);
+                      if (!open) {
+                        setDayStopsInitialStopId(null);
+                      }
+                    }}
                     dayTitle={currentDayPlan.title?.trim() || `День ${selectedDay}`}
                     stops={sortedRouteStopsForDialog}
+                    initialStopId={dayStopsInitialStopId}
                     onFocusStopOnMap={(id) => {
                       setDayStopsDetailOpen(false);
+                      setDayStopsInitialStopId(null);
                       setMapRouteFocus({ kind: "stop", id });
                     }}
                   />

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { formatEstimatedCostSumOrFree } from "@/lib/place-price-hint";
+
+/** Лимит текста `cardTeaser` под 2 строки (text-xs) в карточке маршрута. */
+export const LEISURE_CARD_TEASER_MAX = 100;
 
 /** Модель часто отдаёт lat/lon строкой, рейтинг 4.7 или вне 3..5, стоимость как число. */
 const toFiniteNumber = (v: unknown): number | null => {
@@ -10,23 +14,8 @@ const toFiniteNumber = (v: unknown): number | null => {
   return null;
 };
 
-const wgsLat = z
-  .unknown()
-  .transform((v) => {
-    const n = toFiniteNumber(v);
-    if (n == null) return Number.NaN;
-    return Math.min(90, Math.max(-90, n));
-  })
-  .pipe(z.number().finite());
-
-const wgsLon = z
-  .unknown()
-  .transform((v) => {
-    const n = toFiniteNumber(v);
-    if (n == null) return Number.NaN;
-    return Math.min(180, Math.max(-180, n));
-  })
-  .pipe(z.number().finite());
+/** Координаты из JSON модели не используются — на карту ставит Яндекс (Search/Geocoder). */
+const ignoredWgsFromModel = z.unknown().transform(() => 0);
 
 const looseString = (fallback = "") =>
   z.preprocess(
@@ -51,7 +40,7 @@ const estimatedCost = z.preprocess(
     return s.length > 0 ? s : "~— ₽";
   },
   z.string()
-);
+).transform((s) => formatEstimatedCostSumOrFree(s));
 
 const factLine = (s: string, i: number) => {
   const t = s.trim();
@@ -71,17 +60,30 @@ const interestingFactsThree = z.preprocess(
   z.tuple([z.string().min(1), z.string().min(1), z.string().min(1)])
 );
 
+const cardTeaser = z.unknown().optional().transform((v) => {
+  if (v == null) return "";
+  const t0 = String(v)
+    .trim()
+    .replace(/\s+/g, " ");
+  if (t0.length > LEISURE_CARD_TEASER_MAX) {
+    return t0.slice(0, LEISURE_CARD_TEASER_MAX);
+  }
+  return t0;
+});
+
 /** Один пункт дневного пешего маршрута (с модели). */
 export const dayLeisureModelStopSchema = z.object({
   title: looseString("Место"),
   description: looseString("Описание отсутствует"),
+  /** Короткий текст для карточки в списке (2 строки в UI); пусто — клиент даст фоллбек. */
+  cardTeaser,
   category: looseString("Другое"),
   timeSlot: z.preprocess(
     (v) => (v == null ? undefined : String(v).trim() || undefined),
     z.string().optional()
   ),
-  lat: wgsLat,
-  lon: wgsLon,
+  lat: ignoredWgsFromModel,
+  lon: ignoredWgsFromModel,
   rating: looseRating,
   estimatedCost,
   interestingFacts: interestingFactsThree,

@@ -2,6 +2,10 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { resolveAttractionImageUrl } from "@/lib/attraction-image";
 import { getServerEnv } from "@/lib/server-env";
+import {
+  geocodeOneStopForRouteMap,
+  refPointNearCity,
+} from "@/lib/yandex-geocode-server";
 import { normalizeDurationDays } from "@/lib/trip-dates";
 import { rawTripPlanFromModelSchema } from "@/lib/trip-plan-schema";
 import type { GeneratedTripPlan, TripRecommendation } from "@/types/trip";
@@ -46,8 +50,8 @@ JSON-схема:
 }
 Правила:
 - dayPlans: ровно ${days} дн(е)й, day от 1 до ${days}, items — конкретные шаги дня; **не** **повторяй** **одинаковые** **достопримечательности/места** **между** **разными** **днями** (в сумме — разнообразный план на всё пребывание).
-- recommendations: 4–8 **разных** реальных мест в городе/регионе «${to}»; у каждого точные WGS84 (lat, lon), **все** **title** **уникальны**.
-- mapCenter: центр маршрута/города назначения.`;
+- recommendations: 4–8 **разных** реальных мест в «${to}»; **все** **title** **уникальны**; **координаты** **в** **JSON** **—** **заглушки** **(сервер** **подставит** **Яндекс.Карты** **по** **названиям**).
+- mapCenter: **примерный** **zoom** (10–15); **lat/lon** **в** **ответе** **не** **важны** **—** **центр** **карты** **ставит** **сервер** **по** **${to}** **через** **Яндекс**.`;
 
   const userPrompt = `Составь маршрут:
 - Откуда: ${from}
@@ -108,11 +112,25 @@ JSON-схема:
   }
 
   const raw = modelPlan.data;
-  const zoom = raw.mapCenter.zoom ?? 12;
-  const mapCenter = { lat: raw.mapCenter.lat, lon: raw.mapCenter.lon, zoom };
+  const yandexKey = process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY?.trim() ?? "";
+  const city = to.trim();
+  let centerP = await refPointNearCity(city, yandexKey);
+  if (!centerP) {
+    centerP = { lat: 0, lon: 0 };
+  }
+  const zoom = Math.min(15, Math.max(10, raw.mapCenter.zoom ?? 12));
+  const mapCenter = { lat: centerP.lat, lon: centerP.lon, zoom };
 
   const withImages: TripRecommendation[] = await Promise.all(
-    raw.recommendations.map(async (r) => {
+    raw.recommendations.map(async (r, idx) => {
+      let g = await geocodeOneStopForRouteMap(r.title, city, yandexKey);
+      if (!g) {
+        const a = 0.012;
+        g = {
+          lat: centerP.lat + Math.sin((idx + 1) * 1.2) * a,
+          lon: centerP.lon + Math.cos((idx + 1) * 1.2) * a,
+        };
+      }
       const id = randomUUID();
       const image = await resolveAttractionImageUrl({
         title: r.title,
@@ -126,8 +144,8 @@ JSON-схема:
         category: r.category,
         description: r.description,
         highlights: r.highlights,
-        lat: r.lat,
-        lon: r.lon,
+        lat: g.lat,
+        lon: g.lon,
         rating: r.rating ?? 4.5,
         image,
       };

@@ -41,6 +41,7 @@ export const buildLeisureRouteStopsFromModel = async (args: {
       placesApiKey
     );
     const estimatedCost = mergeEstimatedCost(s.estimatedCost, placeHint);
+    const cardTeaser = s.cardTeaser?.trim();
     stops.push({
       id,
       order: index,
@@ -52,6 +53,9 @@ export const buildLeisureRouteStopsFromModel = async (args: {
       lat: s.lat,
       lon: s.lon,
       image,
+      ...(cardTeaser && cardTeaser.length > 0
+        ? { cardTeaser }
+        : {}),
       interestingFacts: s.interestingFacts,
     });
   }
