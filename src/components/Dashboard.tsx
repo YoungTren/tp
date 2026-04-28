@@ -45,10 +45,7 @@ import {
   type CarouselSlide,
 } from "./attraction-photo-carousel";
 import { DayStopsDetailDialog } from "./day-stops-detail-dialog";
-import {
-  RouteGenerationWalkLoader,
-  ROUTE_GEN_PLANE_SLOW_FACTOR,
-} from "./route-generation-walk-loader";
+import { RouteGenerationWalkLoader } from "./route-generation-walk-loader";
 import type { MapRouteFocus, YandexMapPoint } from "./yandex-trip-map";
 import type { DayPlan, LeisureRouteStop, TripData } from "@/types/trip";
 
@@ -783,15 +780,11 @@ export function Dashboard({
           routeGenPaceMsRef.current = Math.round(
             0.4 * legMs + 0.6 * routeGenPaceMsRef.current
           );
-          const planeCycleMs = Math.round(
-            routeGenPaceForRunMs * ROUTE_GEN_PLANE_SLOW_FACTOR
-          );
-          const delayHideMs = Math.max(0, planeCycleMs - legMs);
           skipCreateLoadingInFinally.current = true;
           setTimeout(() => {
             setCreateRouteLoading(false);
             skipCreateLoadingInFinally.current = false;
-          }, delayHideMs);
+          }, 0);
         }
       } finally {
         if (!skipCreateLoadingInFinally.current) {

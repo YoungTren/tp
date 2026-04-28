@@ -4,21 +4,17 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 
 /**
- * Замедление относительно оценки pace: полный цикл из трёх пролётов =
- * `paceDurationMs × factor`. Импортируется в Dashboard для синхронного ожидания перед показом плана.
+ * Замедление относительно оценки pace: один пролёт =
+ * `paceDurationMs × factor` (показ маршрута — сразу после ответа API, см. Dashboard).
  */
 export const ROUTE_GEN_PLANE_SLOW_FACTOR = 1.28;
 
-/** Три пролёта за время загрузки: каждый раз снизу → верх (0…100% по нижнему краю). */
+/** Один пролёт за время загрузки: снизу → верх (0…100% по нижнему краю плашки). */
 const planeBottomPct = (elapsed: number, durationMs: number): number => {
   if (durationMs < 1) {
     return 0;
   }
-  const u = Math.min(1, elapsed / durationMs);
-  const segment = u * 3;
-  const flightProgress =
-    segment <= 1 ? segment : segment <= 2 ? segment - 1 : segment - 2;
-  return flightProgress * 100;
+  return Math.min(1, elapsed / durationMs) * 100;
 };
 
 const useRouteLoaderElapsed = (args: { active: boolean; startTime: number }) => {
@@ -62,13 +58,7 @@ export const RouteGenerationWalkLoader = ({
   const b = planeBottomPct(elapsed, durationMs);
   const overallProgress = Math.min(1, elapsed / Math.max(1, durationMs));
   const skyParallaxY = overallProgress * -18;
-  const phase = overallProgress * 3;
-  const plaqueText =
-    phase < 1
-      ? "Создаем маршрут, пожалуйста подождите"
-      : phase < 2
-        ? "Осталось совсем немного"
-        : "Последний самолет, честно";
+  const plaqueText = "Создаем маршрут, пожалуйста подождите";
 
   return (
     <div
