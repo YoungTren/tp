@@ -30,6 +30,8 @@ const stripMarkdownJsonFence = (raw: string): string => {
   return t.trim();
 };
 
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const { deepseekApiKey, googleApiKey, googleCseId, googlePlacesKey } = getServerEnv();
   const body: unknown = await request.json();

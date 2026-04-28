@@ -13,6 +13,8 @@ import type { GeneratedTripPlan, TripRecommendation } from "@/types/trip";
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 const DEEPSEEK_MODEL = "deepseek-chat";
 
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const { deepseekApiKey, googleApiKey, googleCseId, googlePlacesKey } = getServerEnv();
   const body: unknown = await request.json();

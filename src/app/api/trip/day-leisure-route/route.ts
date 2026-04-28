@@ -28,6 +28,9 @@ const stripMarkdownJsonFence = (raw: string): string => {
   return t.trim();
 };
 
+/** Vercel serverless: на Pro можно увеличить время выполнения (Hobby — около 10 с жёстко). */
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const { deepseekApiKey, googleApiKey, googleCseId, googlePlacesKey } = getServerEnv();
   const body: unknown = await request.json();

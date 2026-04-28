@@ -30,7 +30,10 @@ export async function POST(request: Request) {
   if (!cleaned.length) {
     return NextResponse.json({ items: [] as { id: string; lat: number | null; lon: number | null }[] });
   }
-  const yandexKey = process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY?.trim() ?? "";
+  const yandexKey =
+    process.env.YANDEX_MAPS_API_KEY?.trim() ??
+    process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY?.trim() ??
+    "";
   const coords = await geocodeAttractionRows(city, cleaned, yandexKey);
   return NextResponse.json({
     items: coords.map((c) =>
