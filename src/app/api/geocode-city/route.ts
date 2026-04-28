@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import { yandexSearchMapsText } from "@/lib/yandex-geocode-server";
+import { refPointNearCity } from "@/lib/yandex-geocode-server";
 
 /**
- * Координаты центра города (Yandex Search / geo) — для стартового положения карты по полю «Куда».
+ * Центр карты по названию города (поле «Куда»).
+ * Сервер: Яндекс при наличии ключа → иначе Nominatim → при наличии `GOOGLE_API_KEY` — Google Geocoding.
+ * Так карта не залипает на «весь мир» на Vercel, если забыли `NEXT_PUBLIC_*` или Яндекс временно не отвечает.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -10,14 +12,13 @@ export async function GET(request: Request) {
   if (!city || city.length > 200) {
     return NextResponse.json({ error: "city required" }, { status: 400 });
   }
-  const key = process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY?.trim() ?? "";
-  if (!key) {
-    return NextResponse.json({ error: "Yandex API key is not configured" }, { status: 500 });
-  }
-  const p =
-    (await yandexSearchMapsText(city, key, "geo")) ??
-    (await yandexSearchMapsText(city, key)) ??
-    null;
+
+  const yandexKey =
+    process.env.YANDEX_MAPS_API_KEY?.trim() ??
+    process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY?.trim() ??
+    "";
+
+  const p = await refPointNearCity(city, yandexKey);
   if (!p) {
     return NextResponse.json({ error: "geocode not found" }, { status: 404 });
   }
