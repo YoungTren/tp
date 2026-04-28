@@ -55,17 +55,55 @@ export const RouteGenerationWalkLoader = ({
   const durationMs =
     Math.max(1, paceDurationMs) * ROUTE_GEN_PLANE_SLOW_FACTOR;
 
-  const b = planeBottomPct(elapsed, durationMs);
-  const overallProgress = Math.min(1, elapsed / Math.max(1, durationMs));
+  /** Первый пролёт → второй сразу после того же по центру (две фазы по `durationMs`). */
+  const bFirst = planeBottomPct(elapsed, durationMs);
+  const secondElapsed = elapsed - durationMs;
+  const showSecondPlane = secondElapsed >= 0;
+  const bSecond = showSecondPlane
+    ? planeBottomPct(secondElapsed, durationMs)
+    : 0;
+
+  const totalVisualMs = durationMs * 2;
+  const overallProgress = Math.min(
+    1,
+    elapsed / Math.max(1, totalVisualMs)
+  );
   const skyParallaxY = overallProgress * -18;
-  const plaqueText = "Создаем маршрут, пожалуйста подождите";
+
+  const planeColumn = (bottomPct: number, text: string) => (
+    <div
+      className="pointer-events-none absolute left-1/2 z-10 flex -translate-x-1/2 flex-col items-center will-change-[bottom]"
+      style={{ bottom: `${bottomPct}%` }}
+    >
+      <div className="h-10 w-10 shrink-0 origin-center -rotate-45">
+        <Image
+          src="/icons/airplane.png"
+          alt=""
+          width={40}
+          height={40}
+          className="h-10 w-10 select-none object-contain object-bottom drop-shadow-sm"
+          unoptimized
+        />
+      </div>
+      <div className="h-2 w-px shrink-0 bg-slate-400/60" aria-hidden />
+      <div className="max-w-[min(20rem,calc(100vw-2.5rem))] rounded-lg bg-white/90 px-3 py-2 text-center shadow-sm">
+        <p className="text-xs font-medium leading-snug text-slate-700 sm:text-sm">
+          {text}
+        </p>
+      </div>
+    </div>
+  );
 
   return (
     <div
       className="relative h-full min-h-[200px] w-full flex-1 self-stretch overflow-hidden rounded-xl bg-sky-50/40 sm:min-h-[220px] [color-scheme:light]"
       role="status"
       aria-live="polite"
-      aria-label={plaqueText}
+      aria-label={
+        showSecondPlane
+          ? "Осталось еще немного"
+          : "Создаем маршрут, пожалуйста подождите"
+      }
     >
       <div
         className="pointer-events-none absolute inset-0 z-0 will-change-transform"
@@ -176,28 +214,9 @@ export const RouteGenerationWalkLoader = ({
           </g>
         </svg>
       </div>
-      {/* Самолёт + «верёвка» + плашка: bottom у всего столбца — низ плашки привязан к траектории. */}
-      <div
-        className="pointer-events-none absolute left-1/2 z-10 flex -translate-x-1/2 flex-col items-center will-change-[bottom]"
-        style={{ bottom: `${b}%` }}
-      >
-        <div className="h-10 w-10 shrink-0 origin-center -rotate-45">
-          <Image
-            src="/icons/airplane.png"
-            alt=""
-            width={40}
-            height={40}
-            className="h-10 w-10 select-none object-contain object-bottom drop-shadow-sm"
-            unoptimized
-          />
-        </div>
-        <div className="h-2 w-px shrink-0 bg-slate-400/60" aria-hidden />
-        <div className="max-w-[min(20rem,calc(100vw-2.5rem))] rounded-lg bg-white/90 px-3 py-2 text-center shadow-sm">
-          <p className="text-xs font-medium leading-snug text-slate-700 sm:text-sm">
-            {plaqueText}
-          </p>
-        </div>
-      </div>
+      {planeColumn(bFirst, "Создаем маршрут, пожалуйста подождите")}
+      {showSecondPlane &&
+        planeColumn(bSecond, "Осталось еще немного")}
     </div>
   );
 };
