@@ -107,6 +107,36 @@ export const nominatimGeocodeToLatLon = async (
 };
 
 /**
+ * Резерв для международных адресов и POI: Google Geocoding API (`GOOGLE_API_KEY`).
+ */
+export const googleGeocodeToLatLon = async (
+  address: string,
+  apiKey: string
+): Promise<GeoPoint | null> => {
+  const q = address.trim();
+  if (!q || !apiKey.trim()) return null;
+  const u = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+  u.searchParams.set("address", q);
+  u.searchParams.set("key", apiKey);
+  try {
+    const res = await fetch(u.toString());
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      status?: string;
+      results?: { geometry?: { location?: { lat?: number; lng?: number } } }[];
+    };
+    if (data.status !== "OK" || !data.results?.length) return null;
+    const loc = data.results[0]?.geometry?.location;
+    const lat = loc?.lat;
+    const lng = loc?.lng;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat: lat as number, lon: lng as number };
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Только HTTP Geocoder Яндекса (тот же `apikey`, что и для JS API; в кабинете — пакет Geocoder).
  */
 export const yandexGeocodeQueriesOnly = async (
@@ -149,11 +179,20 @@ export const yandexGeocodeFirstMatch = async (
     const g = await nominatimGeocodeToLatLon(t);
     if (g) return g;
   }
+  const googleKey = process.env.GOOGLE_API_KEY?.trim() ?? "";
+  if (googleKey) {
+    for (const q of queries) {
+      const t = q.trim();
+      if (!t) continue;
+      const gg = await googleGeocodeToLatLon(t, googleKey);
+      if (gg) return gg;
+    }
+  }
   return null;
 };
 
 /**
- * Старт маршрута на карте: только Яндекс (Search / HTTP Geocoder) и Nominatim внутри `yandexGeocodeFirstMatch` — без Google.
+ * Старт маршрута на карте: Яндекс → Nominatim → Google Geocoding внутри `yandexGeocodeFirstMatch`.
  */
 export const geocodeStartAddressFirstMatch = async (
   queries: readonly string[],
@@ -237,9 +276,29 @@ const tryYandexPoiForRouteMap = async (
   t: string,
   c: string,
   yandexKey: string,
-  moscowRed: boolean
+  moscowRed: boolean,
+  category?: string
 ): Promise<GeoPoint | null> => {
+  const cat = category?.trim();
+  const catPrefQueries =
+    cat && c
+      ? uniqueLines([
+          `${t}, ${cat}, ${c}`,
+          `${cat} ${t}, ${c}`,
+          `${t} (${cat}), ${c}`,
+        ])
+      : [];
   if (yandexKey.trim()) {
+    for (const line of catPrefQueries) {
+      const hit =
+        (await yandexSearchMapsText(line, yandexKey, "geo")) ??
+        (await yandexSearchMapsText(line, yandexKey, "biz")) ??
+        (await yandexSearchMapsText(line, yandexKey)) ??
+        null;
+      if (hit) {
+        return hit;
+      }
+    }
     const y1 = await geocodeOneStopYandexOnly(t, c, yandexKey);
     if (y1) {
       return y1;
@@ -248,6 +307,9 @@ const tryYandexPoiForRouteMap = async (
   if (yandexKey.trim()) {
     const yandexMore = c
       ? uniqueLines([
+          ...(cat
+            ? [`${t}, ${cat}`, `${cat}, ${c}`]
+            : []),
           `${t} ${c}`,
           `${c} ${t}`,
           `${t} — ${c}`,
@@ -278,10 +340,13 @@ const tryYandexPoiForRouteMap = async (
 const tryNominatimPoiForRoute = async (
   t: string,
   c: string,
-  moscowRed: boolean
+  moscowRed: boolean,
+  category?: string
 ): Promise<GeoPoint | null> => {
+  const cat = category?.trim();
   const nomLines = c
     ? uniqueLines([
+        ...(cat ? [`${t}, ${cat}, ${c}`, `${t}, ${c}, ${cat}`] : []),
         `${t}, ${c}`,
         `${t}, ${c}, Россия`,
         `${t}, ${c}, Russia`,
@@ -304,13 +369,36 @@ const tryNominatimPoiForRoute = async (
   return null;
 };
 
+const tryGooglePoiForRoute = async (
+  t: string,
+  c: string,
+  googleApiKey: string,
+  category?: string
+): Promise<GeoPoint | null> => {
+  const cat = category?.trim();
+  const lines = c
+    ? uniqueLines([
+        ...(cat ? [`${t}, ${cat}, ${c}`, `${cat} ${t}, ${c}`] : []),
+        `${t}, ${c}`,
+        `${t} ${c}`,
+        `${c}, ${t}`,
+      ])
+    : uniqueLines([t, `${t}, Russia`]);
+  for (const line of lines) {
+    const g = await googleGeocodeToLatLon(line, googleApiKey);
+    if (g) return g;
+  }
+  return null;
+};
+
 /**
- * Координаты для **отрисовки маршрута**: только **Яндекс** (и резерв Nominatim). Координаты из ИИ не учитываются.
+ * Координаты для **отрисовки маршрута**: Яндекс → Google Geocoding → Nominatim. Координаты из ИИ не учитываются.
  */
 export const geocodeOneStopForRouteMap = async (
   placeTitle: string,
   city: string,
-  yandexKey: string
+  yandexKey: string,
+  category?: string
 ): Promise<GeoPoint | null> => {
   const t = placeTitle.trim();
   const c = city.trim();
@@ -318,20 +406,32 @@ export const geocodeOneStopForRouteMap = async (
     return null;
   }
   const moscowRed = buildMoscowRedSquareHeuristic(t, c);
-  const yY = await tryYandexPoiForRouteMap(t, c, yandexKey, moscowRed);
+  const yY = await tryYandexPoiForRouteMap(
+    t,
+    c,
+    yandexKey,
+    moscowRed,
+    category
+  );
   if (yY) {
     return yY;
   }
-  return tryNominatimPoiForRoute(t, c, moscowRed);
+  const googleKey = process.env.GOOGLE_API_KEY?.trim() ?? "";
+  if (googleKey) {
+    const gG = await tryGooglePoiForRoute(t, c, googleKey, category);
+    if (gG) return gG;
+  }
+  return tryNominatimPoiForRoute(t, c, moscowRed, category);
 };
 
-/** Центр для города — Яндекс, затем Nominatim (тот же ключ, что ref для fallback-точек). */
+/** Центр для города — Яндекс, затем Nominatim, затем Google Geocoding. */
 export const refPointNearCity = async (
   city: string,
   yandexKey: string
 ): Promise<GeoPoint | null> => {
   const c = city.trim();
   if (!c) return null;
+  const googleKey = process.env.GOOGLE_API_KEY?.trim() ?? "";
   if (yandexKey.trim()) {
     const y =
       (await yandexSearchMapsText(c, yandexKey, "geo")) ??
@@ -340,12 +440,19 @@ export const refPointNearCity = async (
       null;
     if (y) return y;
   }
-  return (
+  const nom =
     (await nominatimGeocodeToLatLon(c)) ??
     (await nominatimGeocodeToLatLon(`${c}, Россия`)) ??
     (await nominatimGeocodeToLatLon(`${c}, Europe`)) ??
-    null
-  );
+    null;
+  if (nom) return nom;
+  if (googleKey) {
+    return (
+      (await googleGeocodeToLatLon(c, googleKey)) ??
+      (await googleGeocodeToLatLon(`${c}, Europe`, googleKey))
+    );
+  }
+  return null;
 };
 
 /**
@@ -353,35 +460,47 @@ export const refPointNearCity = async (
  * (чтобы маршрут всегда строился и пины не сливались в одну клетку).
  */
 export const resolveStopsWithGeocodedCoords = async <
-  T extends { title: string; lat: number; lon: number }
+  T extends { title: string; lat: number; lon: number; category?: string }
 >(
   stops: T[],
   city: string,
   yandexKey: string
 ): Promise<T[]> => {
-  let cityRef: GeoPoint | null | undefined;
-  const getRef = async (): Promise<GeoPoint | null> => {
-    if (cityRef !== undefined) return cityRef;
-    cityRef = await refPointNearCity(city, yandexKey);
-    return cityRef;
+  const cityNorm = city.trim();
+  /** Один раз до параллельных POI — фиксируем центр города без гонки и без конкуренции с десятками `refPointNearCity`. */
+  const cityCenter = await refPointNearCity(cityNorm, yandexKey);
+
+  /** Один запрос на имя города и на «город + Europe», иначе при массовом провале Яндекса Nominatim получает лавину одинаковых запросов и режет по policy → везде `null` и `{0,0}`. */
+  let nomCityOnce: Promise<GeoPoint | null> | undefined;
+  let nomEuropeOnce: Promise<GeoPoint | null> | undefined;
+  const nominatimCityShared = (): Promise<GeoPoint | null> => {
+    nomCityOnce ??= nominatimGeocodeToLatLon(cityNorm);
+    return nomCityOnce;
+  };
+  const nominatimEuropeShared = (): Promise<GeoPoint | null> => {
+    nomEuropeOnce ??= nominatimGeocodeToLatLon(`${cityNorm}, Europe`);
+    return nomEuropeOnce;
   };
 
   return Promise.all(
     stops.map(async (s, idx) => {
-      let g = await geocodeOneStopForRouteMap(s.title, city, yandexKey);
+      const cat =
+        "category" in s && typeof (s as { category?: string }).category === "string"
+          ? (s as { category?: string }).category
+          : undefined;
+      let g = await geocodeOneStopForRouteMap(s.title, cityNorm, yandexKey, cat);
       if (!g) {
-        const r = await getRef();
-        if (r) {
+        if (cityCenter) {
           const a = 0.008;
           g = {
-            lat: r.lat + Math.sin((idx + 1) * 1.7) * a,
-            lon: r.lon + Math.cos((idx + 1) * 1.7) * a,
+            lat: cityCenter.lat + Math.sin((idx + 1) * 1.7) * a,
+            lon: cityCenter.lon + Math.cos((idx + 1) * 1.7) * a,
           };
         } else {
           const n =
-            (await nominatimGeocodeToLatLon(city)) ??
-            (await nominatimGeocodeToLatLon(`${s.title} ${city}`)) ??
-            (await nominatimGeocodeToLatLon(`${city}, Europe`));
+            (await nominatimCityShared()) ??
+            (await nominatimGeocodeToLatLon(`${s.title} ${cityNorm}`)) ??
+            (await nominatimEuropeShared());
           if (n && (n.lat !== 0 || n.lon !== 0)) {
             const a = 0.01;
             g = {

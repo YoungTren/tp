@@ -123,7 +123,12 @@ JSON-схема:
 
   const withImages: TripRecommendation[] = await Promise.all(
     raw.recommendations.map(async (r, idx) => {
-      let g = await geocodeOneStopForRouteMap(r.title, city, yandexKey);
+      let g = await geocodeOneStopForRouteMap(
+        r.title,
+        city,
+        yandexKey,
+        r.category
+      );
       if (!g) {
         const a = 0.012;
         g = {

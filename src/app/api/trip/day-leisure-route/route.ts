@@ -130,21 +130,32 @@ ${lockedStopTitles.map((t) => `• ${t}`).join("\n")}
 - Группа: ${travelers} чел., бюджет: ${budget}
 ${titleHint ? `- Пожелание (только **наследие/история/смотри**, не еда, не «парки с горками»): ${titleHint}\n` : ""}${lockedListBlock}`;
 
-  const deepseekRes = await fetch(DEEPSEEK_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${deepseekApiKey}`,
-    },
-    body: JSON.stringify({
-      model: DEEPSEEK_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-    }),
-  });
+  let deepseekRes: Response;
+  try {
+    deepseekRes = await fetch(DEEPSEEK_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${deepseekApiKey}`,
+      },
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "Нет связи с сервисом маршрута (DeepSeek). Проверьте интернет и повторите позже.",
+      },
+      { status: 503 }
+    );
+  }
 
   let deepseekData: unknown;
   try {

@@ -22,6 +22,7 @@ import {
 import {
   buildDayRouteWgsPath,
   buildYandexMapsPedestrianRouteUrl,
+  mapCenterFromWaypoints,
   type WgsPoint,
 } from "@/lib/day-route-path";
 import { toDisplayAddress } from "@/lib/format-address";
@@ -44,7 +45,10 @@ import {
   type CarouselSlide,
 } from "./attraction-photo-carousel";
 import { DayStopsDetailDialog } from "./day-stops-detail-dialog";
-import { RouteGenerationWalkLoader } from "./route-generation-walk-loader";
+import {
+  RouteGenerationWalkLoader,
+  ROUTE_GEN_PLANE_SLOW_FACTOR,
+} from "./route-generation-walk-loader";
 import type { MapRouteFocus, YandexMapPoint } from "./yandex-trip-map";
 import type { DayPlan, LeisureRouteStop, TripData } from "@/types/trip";
 
@@ -158,15 +162,13 @@ const ItineraryDayHeaderBar = (props: {
         <button
           type="button"
           onClick={onShareRoute}
-          className="inline-flex h-6 shrink-0 items-center gap-0.5 rounded-lg border border-gray-100 bg-gray-50/40 px-1.5 text-[10px] font-medium text-gray-700 transition hover:border-[#4ECDC4]/30 hover:bg-gray-50/80 sm:gap-1 sm:px-2 sm:text-[11px]"
-          aria-label="Поделиться маршрутом"
+          className="inline-flex h-6 shrink-0 items-center gap-0.5 rounded-lg border-0 bg-[#4ECDC4] px-1.5 text-[10px] font-medium text-white shadow-sm transition hover:bg-[#45c2b9] sm:gap-1 sm:px-2 sm:text-[11px]"
         >
           <Share2
-            className="h-3 w-3 shrink-0"
-            style={{ color: "#4ECDC4" }}
+            className="h-3 w-3 shrink-0 text-white"
             aria-hidden
           />
-          <span className="whitespace-nowrap">Маршрут</span>
+          <span className="whitespace-nowrap">Поделиться маршрутом</span>
         </button>
       ) : null}
       <DropdownMenu>
@@ -237,14 +239,6 @@ export function Dashboard({
     return capitalizePlaceName(raw);
   }, [cityForMap]);
 
-  const mapCenterForView = useMemo(
-    () =>
-      !cityForMap
-        ? { ...DEFAULT_WORLD_MAP_CENTER }
-        : { ...mapCenter },
-    [cityForMap, mapCenter.lat, mapCenter.lon, mapCenter.zoom]
-  );
-
   useEffect(() => {
     if (!cityForMap) return;
     const ac = new AbortController();
@@ -297,10 +291,7 @@ export function Dashboard({
   const [isEditingStart, setIsEditingStart] = useState(false);
   const [createRouteLoading, setCreateRouteLoading] = useState(false);
   const [restOfDaysLoading, setRestOfDaysLoading] = useState(false);
-  const [routeGenFirstLegMs, setRouteGenFirstLegMs] = useState<number | null>(
-    null
-  );
-  /** EMA: грубая оценка длит. следующего «первого» ответа — в паре с firstLeg даёт ровный p ≈ t/T. */
+  /** EMA: грубая оценка длит. следующего «первого» ответа. */
   const routeGenPaceMsRef = useRef(18_000);
   const [routeGenPaceForRunMs, setRouteGenPaceForRunMs] = useState(18_000);
   const [routeGenEpoch, setRouteGenEpoch] = useState(0);
@@ -347,6 +338,36 @@ export function Dashboard({
     () => resolveTripRouteStartPoint(itineraryDays, currentDayPlan),
     [itineraryDays, currentDayPlan]
   );
+
+  const mapCenterAlignedToGeneratedRoute = useMemo(() => {
+    const path = buildDayRouteWgsPath({
+      routeStartPoint: mapRouteStartPoint,
+      routeStops: currentDayPlan.routeStops,
+    });
+    return mapCenterFromWaypoints(path);
+  }, [mapRouteStartPoint, currentDayPlan.routeStops]);
+
+  const mapCenterForView = useMemo(() => {
+    if (!cityForMap) {
+      return { ...DEFAULT_WORLD_MAP_CENTER };
+    }
+    if (
+      currentDayPlan.routeGenerated &&
+      (currentDayPlan.routeStops?.length ?? 0) > 0 &&
+      mapCenterAlignedToGeneratedRoute
+    ) {
+      return mapCenterAlignedToGeneratedRoute;
+    }
+    return { ...mapCenter };
+  }, [
+    cityForMap,
+    mapCenter.lat,
+    mapCenter.lon,
+    mapCenter.zoom,
+    currentDayPlan.routeGenerated,
+    currentDayPlan.routeStops,
+    mapCenterAlignedToGeneratedRoute,
+  ]);
 
   const hasAnyConfirmedDayAddress = useMemo(
     () => itineraryDays.some((d) => d.routeStartAddress?.trim()),
@@ -678,14 +699,15 @@ export function Dashboard({
           ? collectLockedStopTitlesForDay(alignedItinerary, targetDay)
           : [];
       setCreateRouteError(null);
-      setRouteGenFirstLegMs(null);
       setRouteGenPaceForRunMs(routeGenPaceMsRef.current);
       routeGenT0Ref.current = performance.now();
       setRouteGenEpoch((e) => e + 1);
       setCreateRouteLoading(true);
       setRestOfDaysLoading(false);
       try {
-        const res = await fetch("/api/trip/day-leisure-route", {
+        let res: Response;
+        try {
+          res = await fetch("/api/trip/day-leisure-route", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -700,8 +722,27 @@ export function Dashboard({
                 ? { current: targetDay, total: nDays }
                 : undefined,
           }),
-        });
-        const data: unknown = await res.json();
+          });
+        } catch {
+          setCreateRouteError(
+            "Не удалось связаться с сервером. Проверьте сеть и что приложение запущено."
+          );
+          return;
+        }
+        const rawText = await res.text();
+        let data: unknown = {};
+        if (rawText.trim()) {
+          try {
+            data = JSON.parse(rawText) as unknown;
+          } catch {
+            setCreateRouteError(
+              !res.ok
+                ? `Сервер недоступен или вернул не JSON (код ${res.status}). Проверьте сеть и ключи API.`
+                : "Некорректный ответ сервера при генерации маршрута"
+            );
+            return;
+          }
+        }
         if (!res.ok) {
           setCreateRouteError(
             (data as { error?: string })?.error ?? "Не удалось создать маршрут"
@@ -739,15 +780,18 @@ export function Dashboard({
             1,
             Math.round(performance.now() - routeGenT0Ref.current)
           );
-          setRouteGenFirstLegMs(legMs);
           routeGenPaceMsRef.current = Math.round(
             0.4 * legMs + 0.6 * routeGenPaceMsRef.current
           );
+          const planeCycleMs = Math.round(
+            routeGenPaceForRunMs * ROUTE_GEN_PLANE_SLOW_FACTOR
+          );
+          const delayHideMs = Math.max(0, planeCycleMs - legMs);
           skipCreateLoadingInFinally.current = true;
           setTimeout(() => {
             setCreateRouteLoading(false);
             skipCreateLoadingInFinally.current = false;
-          }, 0);
+          }, delayHideMs);
         }
       } finally {
         if (!skipCreateLoadingInFinally.current) {
@@ -833,60 +877,60 @@ export function Dashboard({
           >
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col rounded-2xl bg-white p-5 shadow-sm">
               {showStartLocationForm ? (
-                <div className="mb-4 w-1/2 min-w-0 max-w-full shrink-0">
-                  <div className="flex w-full min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white transition focus-within:ring-2 focus-within:ring-[#4ECDC4]/20">
-                    <input
-                      id={`day-route-start-${selectedDay}`}
-                      type="text"
-                      value={editingStartAddress}
-                      onChange={(e) => setEditingStartAddress(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && editingStartAddress.trim()) {
-                          e.preventDefault();
-                          confirmStartAndCreateRoute();
+                <div className="mb-3 flex w-full shrink-0 justify-center">
+                  <div className="w-full max-w-[min(28rem,calc(100%-1rem))]">
+                    <div className="flex w-full min-w-0 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                      <input
+                        id={`day-route-start-${selectedDay}`}
+                        type="text"
+                        value={editingStartAddress}
+                        onChange={(e) => setEditingStartAddress(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && editingStartAddress.trim()) {
+                            e.preventDefault();
+                            confirmStartAndCreateRoute();
+                          }
+                        }}
+                        placeholder="Ваше местоположение в городе"
+                        aria-label="Ваше местоположение в городе"
+                        className="min-w-0 flex-1 rounded-none border-0 bg-white px-3.5 py-2.5 text-sm text-[#1a1a1a] shadow-none outline-none ring-0 placeholder:text-gray-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+                        autoComplete="street-address"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void confirmStartAndCreateRoute();
+                        }}
+                        disabled={
+                          !editingStartAddress.trim() || createRouteLoading
                         }
-                      }}
-                      placeholder="Укажите ваше местоположение"
-                      aria-label="Укажите ваше местоположение"
-                      className="min-w-0 flex-1 border-0 bg-gray-50/80 px-3.5 py-2.5 text-sm text-[#1a1a1a] outline-none placeholder:text-gray-400"
-                      autoComplete="street-address"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void confirmStartAndCreateRoute();
-                      }}
-                      disabled={!editingStartAddress.trim() || createRouteLoading}
-                      className="flex min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-r-xl border-0 px-3 py-2 !bg-[#4ECDC4] !opacity-100 text-white transition enabled:hover:scale-105 disabled:cursor-not-allowed"
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {createRouteLoading ? (
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                      ) : null}
-                      Найти
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {showRouteOnMapInUi ? (
-                    <div className="mb-4">
-                      <h2
+                        className="flex min-h-0 min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-none border-0 px-3.5 py-2.5 !bg-[#4ECDC4] !opacity-100 text-white transition enabled:hover:brightness-[1.03] disabled:cursor-not-allowed"
                         style={{
-                          fontSize: "20px",
-                          fontWeight: 600,
-                          color: "#1a1a1a",
+                          fontSize: "14px",
+                          fontWeight: 500,
                         }}
                       >
-                        Маршрут путешествия
-                      </h2>
+                        {createRouteLoading ? (
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                        ) : null}
+                        Найти
+                      </button>
                     </div>
-                  ) : null}
-                </>
-              )}
+                  </div>
+                </div>
+              ) : showRouteOnMapInUi ? (
+                <div className="mb-4">
+                  <h2
+                    style={{
+                      fontSize: "20px",
+                      fontWeight: 600,
+                      color: "#1a1a1a",
+                    }}
+                  >
+                    Маршрут путешествия
+                  </h2>
+                </div>
+              ) : null}
 
               <div className="relative w-full min-h-[12rem] flex-1 overflow-hidden rounded-2xl border border-gray-100 md:min-h-[16rem] lg:min-h-0">
                 <div className="absolute inset-0 z-0 min-h-0 min-w-0">
@@ -947,12 +991,7 @@ export function Dashboard({
               </div>
             ) : (
             <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col rounded-2xl bg-white p-5 shadow-sm">
-              {hasAnyConfirmedDayAddress &&
-                !createRouteLoading &&
-                !(
-                  currentDayPlan.routeGenerated &&
-                  (currentDayPlan.routeStops?.length ?? 0) > 0
-                ) && (
+              {hasAnyConfirmedDayAddress && !createRouteLoading && (
                   <ItineraryDayHeaderBar
                     className="mb-3"
                     itineraryDays={itineraryDays}
@@ -967,20 +1006,126 @@ export function Dashboard({
                   />
                 )}
 
+              {(Boolean((resolvedRouteStartRaw ?? "").trim()) ||
+                isEditingStart) && (
+                <div className="mb-3">
+                  <div
+                    className="flex min-w-0 flex-wrap items-stretch gap-2"
+                    key="departure-row-global"
+                  >
+                    <div className="flex h-16 min-h-16 max-h-16 min-w-0 flex-1 items-stretch gap-2 rounded-lg border border-gray-100 bg-gray-50/40 p-2 transition hover:border-[#4ECDC4]/30 sm:h-14 sm:min-h-14 sm:max-h-14">
+                      <span
+                        className="flex h-8 w-8 shrink-0 self-center items-center justify-center rounded-full text-white shadow-sm"
+                        style={{ background: "#4ECDC4" }}
+                        aria-hidden
+                      >
+                        <MapPin
+                          className="h-4 w-4 text-white"
+                          strokeWidth={2.5}
+                        />
+                      </span>
+                      {isEditingStart ? (
+                        <>
+                          <div className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden py-0.5">
+                            <input
+                              ref={departureInlineInputRef}
+                              type="text"
+                              value={editingStartAddress}
+                              onChange={(e) =>
+                                setEditingStartAddress(e.target.value)
+                              }
+                              onKeyDown={(e) => {
+                                if (
+                                  e.key === "Enter" &&
+                                  editingStartAddress.trim()
+                                ) {
+                                  e.preventDefault();
+                                  void confirmStartAndCreateRoute();
+                                }
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  cancelInlineStartEdit();
+                                }
+                              }}
+                              autoComplete="street-address"
+                              aria-label="Адрес старта, Esc — отмена"
+                              placeholder="Адрес"
+                              className="h-8 min-h-0 w-full min-w-0 max-w-full rounded border-0 bg-white/70 px-1.5 font-sans text-sm font-normal leading-5 text-[#1a1a1a] shadow-none outline-none ring-0 transition placeholder:text-gray-400 focus:bg-white focus:ring-0 focus-visible:ring-0"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void confirmStartAndCreateRoute();
+                            }}
+                            disabled={
+                              !editingStartAddress.trim() || createRouteLoading
+                            }
+                            className="inline-flex h-8 min-h-8 min-w-[4.5rem] shrink-0 items-center justify-center gap-1 self-center rounded-lg border-0 bg-[#4ECDC4] px-2 text-[10px] font-medium leading-tight text-white transition enabled:hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {createRouteLoading ? (
+                              <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                            ) : null}
+                            Найти
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setMapRouteFocus({ kind: "start" });
+                              }
+                            }}
+                            onClick={() => setMapRouteFocus({ kind: "start" })}
+                            className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden py-0.5"
+                            aria-label="Старт маршрута на карте"
+                          >
+                            <p
+                              className="min-h-0 w-full truncate font-sans text-sm font-normal leading-5"
+                              style={{ color: "#1a1a1a" }}
+                            >
+                              {toDisplayAddress(resolvedRouteStartRaw ?? "")}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsEditingStart(true);
+                              setEditingStartAddress(
+                                resolvedRouteStartRaw?.trim() ?? ""
+                              );
+                              setMapRouteFocus(null);
+                            }}
+                            className="inline-flex h-8 min-h-8 w-[5.4rem] min-w-[5.4rem] shrink-0 items-center justify-center self-center rounded-lg border border-gray-200 bg-white px-1.5 text-[10px] font-medium leading-tight text-[#1a1a1a] transition hover:bg-gray-50"
+                          >
+                            Изменить
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {Boolean(resolvedRouteStartRaw?.trim()) &&
                 !isEditingStart &&
                 canShowCreateRouteButton &&
                 (itineraryDays.length === 1 ||
                   Boolean(resolvedRouteStartRaw?.trim())) &&
                 !(createRouteLoading && !restOfDaysLoading) && (
-                  <div className="mb-3">
+                  <div className="mb-3 flex justify-center">
                     <button
                       type="button"
                       onClick={() => {
                         void createLeisureRoute();
                       }}
                       disabled={createRouteLoading || restOfDaysLoading}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-medium text-[#1a1a1a] transition enabled:hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#4ECDC4] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#45c2b9] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {createRouteLoading || restOfDaysLoading ? (
                         <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
@@ -996,14 +1141,14 @@ export function Dashboard({
                 itineraryDays.length > 1 &&
                 !currentDayPlan.routeGenerated &&
                 !(createRouteLoading && !restOfDaysLoading) && (
-                  <div className="mb-3">
+                  <div className="mb-3 flex justify-center">
                     <button
                       type="button"
                       onClick={() => {
                         void generateItineraryDay({ targetDay: selectedDay });
                       }}
                       disabled={createRouteLoading || restOfDaysLoading}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-2.5 text-sm font-medium text-[#1a1a1a] transition enabled:hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#4ECDC4] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#45c2b9] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {createRouteLoading || restOfDaysLoading ? (
                         <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
@@ -1025,129 +1170,14 @@ export function Dashboard({
                       key={routeGenEpoch}
                       active={createRouteLoading}
                       startTime={routeGenT0Ref.current}
-                      firstLegCompleteMs={routeGenFirstLegMs}
                       paceDurationMs={routeGenPaceForRunMs}
                     />
                   </div>
                 )}
 
-                  {currentDayPlan.routeGenerated &&
+              {currentDayPlan.routeGenerated &&
                 (currentDayPlan.routeStops?.length ?? 0) > 0 && (
-                <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto [scrollbar-gutter:stable] pr-3">
-                  {hasAnyConfirmedDayAddress && !createRouteLoading && (
-                    <ItineraryDayHeaderBar
-                      className="mb-4"
-                      itineraryDays={itineraryDays}
-                      selectedDay={selectedDay}
-                      onSelectDay={setSelectedDay}
-                      onAddDay={addDay}
-                      onRemoveLast={removeLastDay}
-                      showShareRoute={showRouteOnMapInUi}
-                      onShareRoute={() => {
-                        void copyYandexRouteUrl();
-                      }}
-                    />
-                  )}
-                  {Boolean((resolvedRouteStartRaw ?? "").trim()) && (
-                    <div
-                      className="flex min-w-0 flex-wrap items-stretch gap-2"
-                      key="departure-row"
-                    >
-                      <div className="flex h-16 min-h-16 max-h-16 min-w-0 flex-1 items-stretch gap-2 rounded-lg border border-gray-100 bg-gray-50/40 p-2 transition hover:border-[#4ECDC4]/30 sm:h-14 sm:min-h-14 sm:max-h-14">
-                        <span
-                          className="flex h-8 w-8 shrink-0 self-center items-center justify-center rounded-full text-white shadow-sm"
-                          style={{ background: "#4ECDC4" }}
-                          aria-hidden
-                        >
-                          <MapPin
-                            className="h-4 w-4 text-white"
-                            strokeWidth={2.5}
-                          />
-                        </span>
-                        {isEditingStart ? (
-                          <>
-                            <div className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden py-0.5">
-                              <input
-                                ref={departureInlineInputRef}
-                                type="text"
-                                value={editingStartAddress}
-                                onChange={(e) => setEditingStartAddress(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" && editingStartAddress.trim()) {
-                                    e.preventDefault();
-                                    void confirmStartAndCreateRoute();
-                                  }
-                                  if (e.key === "Escape") {
-                                    e.preventDefault();
-                                    cancelInlineStartEdit();
-                                  }
-                                }}
-                                autoComplete="street-address"
-                                aria-label="Адрес старта, Esc — отмена"
-                                placeholder="Адрес"
-                                className="h-8 min-h-0 w-full min-w-0 max-w-full rounded border-0 bg-white/70 px-1.5 font-sans text-sm font-normal leading-5 text-[#1a1a1a] shadow-none outline-none ring-0 transition placeholder:text-gray-400 focus:bg-white focus:ring-0 focus-visible:ring-0"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void confirmStartAndCreateRoute();
-                              }}
-                              disabled={
-                                !editingStartAddress.trim() || createRouteLoading
-                              }
-                              className="inline-flex h-8 min-h-8 min-w-[4.5rem] shrink-0 items-center justify-center gap-1 self-center rounded-lg border-0 bg-[#4ECDC4] px-2 text-[10px] font-medium leading-tight text-white transition enabled:hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {createRouteLoading ? (
-                                <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-                              ) : null}
-                              Найти
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <div
-                              role="button"
-                              tabIndex={0}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  setMapRouteFocus({ kind: "start" });
-                                }
-                              }}
-                              onClick={() => setMapRouteFocus({ kind: "start" })}
-                              className="flex min-h-0 min-w-0 flex-1 items-center overflow-hidden py-0.5"
-                              aria-label="Старт маршрута на карте"
-                            >
-                              <p
-                                className="min-h-0 w-full truncate font-sans text-sm font-normal leading-5"
-                                style={{ color: "#1a1a1a" }}
-                              >
-                                {toDisplayAddress(
-                                  resolvedRouteStartRaw ?? ""
-                                )}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIsEditingStart(true);
-                                setEditingStartAddress(
-                                  resolvedRouteStartRaw?.trim() ?? ""
-                                );
-                                setMapRouteFocus(null);
-                              }}
-                              className="inline-flex h-8 min-h-8 w-[5.4rem] min-w-[5.4rem] shrink-0 items-center justify-center self-center rounded-lg border border-gray-200 bg-white px-1.5 text-[10px] font-medium leading-tight text-[#1a1a1a] transition hover:bg-gray-50"
-                            >
-                              Изменить
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
+                  <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto [scrollbar-gutter:stable] pr-3">
                   {sortedRouteStopsForDialog.map((stop, idx) => {
                       const listIndex = idx + 1;
                       return (

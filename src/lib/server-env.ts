@@ -2,7 +2,7 @@
  * Серверные секреты из `.env` / `.env.local`.
  * Клиентский бандл их не видит; `NEXT_PUBLIC_*` задаются отдельно.
  *
- * `googlePlacesKey`: фото и подсказки цен (Places и др.); **координаты для карты** считаются только Яндексом + Nominatim.
+ * `googlePlacesKey`: фото и подсказки цен (Places и др.). Геокод точек маршрута: Яндекс → при необходимости **Google Geocoding** (`GOOGLE_API_KEY`) → Nominatim.
  */
 export const getServerEnv = () => ({
   deepseekApiKey: process.env.DEEPSEEK_API_KEY!,

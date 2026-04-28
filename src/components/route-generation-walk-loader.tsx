@@ -3,14 +3,21 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
-const planeBottomPct = (
-  elapsed: number,
-  durationMs: number
-): number => {
+/**
+ * Замедление относительно оценки pace: полный цикл из двух пролётов =
+ * `paceDurationMs × factor`. Импортируется в Dashboard для синхронного ожидания перед показом плана.
+ */
+export const ROUTE_GEN_PLANE_SLOW_FACTOR = 1.28;
+
+/** Два пролёта за время загрузки: снизу → верх, затем снова снизу → верх (0…100% по нижнему краю). */
+const planeBottomPct = (elapsed: number, durationMs: number): number => {
   if (durationMs < 1) {
     return 0;
   }
-  return Math.min(1, elapsed / durationMs) * 100;
+  const u = Math.min(1, elapsed / durationMs);
+  const segment = u * 2;
+  const halfProgress = segment <= 1 ? segment : segment - 1;
+  return halfProgress * 100;
 };
 
 const useRouteLoaderElapsed = (args: { active: boolean; startTime: number }) => {
@@ -38,34 +45,34 @@ type RouteGenerationWalkLoaderProps = {
   active: boolean;
   /** момент старта запроса (тот же, что зафиксирован в Dashboard) */
   startTime: number;
-  /** null до ответа; после — факт. время до готовности первой части (совпадает с появлением списка). */
-  firstLegCompleteMs: number | null;
-  /** Оценка длительности (EMA с прошлых прогонов) — p = t / T, пока нет firstLeg. */
+  /** Оценка длительности (EMA); визуально умножается на {@link ROUTE_GEN_PLANE_SLOW_FACTOR}. */
   paceDurationMs: number;
 };
 
 export const RouteGenerationWalkLoader = ({
   active,
   startTime,
-  firstLegCompleteMs,
   paceDurationMs,
 }: RouteGenerationWalkLoaderProps) => {
   const elapsed = useRouteLoaderElapsed({ active, startTime });
   const durationMs =
-    firstLegCompleteMs != null && firstLegCompleteMs > 0
-      ? firstLegCompleteMs
-      : Math.max(1, paceDurationMs);
+    Math.max(1, paceDurationMs) * ROUTE_GEN_PLANE_SLOW_FACTOR;
 
   const b = planeBottomPct(elapsed, durationMs);
-  const p = b / 100;
-  const skyParallaxY = p * -18;
+  const overallProgress = Math.min(1, elapsed / Math.max(1, durationMs));
+  const skyParallaxY = overallProgress * -18;
+  /** Первый пролёт — один текст, второй — другой (segment ∈ [0,2)). */
+  const plaqueText =
+    overallProgress * 2 >= 1
+      ? "Осталось совсем немного"
+      : "Создаем маршрут, пожалуйста подождите";
 
   return (
     <div
       className="relative h-full min-h-[200px] w-full flex-1 self-stretch overflow-hidden rounded-xl bg-sky-50/40 sm:min-h-[220px] [color-scheme:light]"
       role="status"
       aria-live="polite"
-      aria-label="Генерируем маршрут, пожалуйста подождите"
+      aria-label={plaqueText}
     >
       <div
         className="pointer-events-none absolute inset-0 z-0 will-change-transform"
@@ -176,8 +183,9 @@ export const RouteGenerationWalkLoader = ({
           </g>
         </svg>
       </div>
+      {/* Самолёт + «верёвка» + плашка: bottom у всего столбца — низ плашки привязан к траектории. */}
       <div
-        className="absolute left-1/2 z-10 flex -translate-x-1/2 flex-col items-center will-change-[bottom,transform]"
+        className="pointer-events-none absolute left-1/2 z-10 flex -translate-x-1/2 flex-col items-center will-change-[bottom]"
         style={{ bottom: `${b}%` }}
       >
         <div className="h-10 w-10 shrink-0 origin-center -rotate-45">
@@ -190,15 +198,10 @@ export const RouteGenerationWalkLoader = ({
             unoptimized
           />
         </div>
-        <div
-          className="h-2 w-px shrink-0 bg-slate-400/70"
-          aria-hidden
-        />
-        <div
-          className="max-w-[min(20rem,calc(100vw-2.5rem))] rounded-lg bg-white/90 px-3 py-2 text-center shadow-sm"
-        >
+        <div className="h-2 w-px shrink-0 bg-slate-400/60" aria-hidden />
+        <div className="max-w-[min(20rem,calc(100vw-2.5rem))] rounded-lg bg-white/90 px-3 py-2 text-center shadow-sm">
           <p className="text-xs font-medium leading-snug text-slate-700 sm:text-sm">
-            Генерируем маршрут, пожалуйста подождите
+            {plaqueText}
           </p>
         </div>
       </div>

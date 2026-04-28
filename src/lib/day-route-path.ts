@@ -1,4 +1,4 @@
-import type { LeisureRouteStop } from "@/types/trip";
+import type { LeisureRouteStop, MapCenter } from "@/types/trip";
 
 export type WgsPoint = { readonly lat: number; readonly lon: number };
 
@@ -70,4 +70,51 @@ export const buildYandexMapsPedestrianRouteUrl = (
   u.searchParams.set("rtext", rtext);
   u.searchParams.set("rtt", "pd");
   return u.toString();
+};
+
+/**
+ * Центр и zoom карты по bbox точек маршрута — чтобы виджет изначально смотрел на реальные координаты достопримечательностей, а не только на общий центр города.
+ */
+export const mapCenterFromWaypoints = (
+  points: readonly WgsPoint[]
+): MapCenter | null => {
+  const pts = points.filter(
+    (p) =>
+      Number.isFinite(p.lat) &&
+      Number.isFinite(p.lon) &&
+      isPlausibleWgs(p.lat, p.lon)
+  );
+  if (pts.length === 0) return null;
+  if (pts.length === 1) {
+    const p = pts[0]!;
+    return { lat: p.lat, lon: p.lon, zoom: 14 };
+  }
+  let minLat = pts[0]!.lat;
+  let maxLat = pts[0]!.lat;
+  let minLon = pts[0]!.lon;
+  let maxLon = pts[0]!.lon;
+  for (const p of pts) {
+    minLat = Math.min(minLat, p.lat);
+    maxLat = Math.max(maxLat, p.lat);
+    minLon = Math.min(minLon, p.lon);
+    maxLon = Math.max(maxLon, p.lon);
+  }
+  const lat = (minLat + maxLat) / 2;
+  const lon = (minLon + maxLon) / 2;
+  const latSpan = Math.max(1e-7, maxLat - minLat);
+  const lonSpan = Math.max(1e-7, maxLon - minLon);
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const effLonSpan = lonSpan * Math.max(0.35, Math.abs(cosLat));
+  const span = Math.max(latSpan, effLonSpan);
+  let zoom = 13;
+  if (span > 0.35) zoom = 11;
+  else if (span > 0.18) zoom = 12;
+  else if (span > 0.09) zoom = 13;
+  else if (span > 0.045) zoom = 14;
+  else zoom = 15;
+  return {
+    lat,
+    lon,
+    zoom: Math.min(15, Math.max(10, zoom)),
+  };
 };

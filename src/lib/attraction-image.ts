@@ -31,8 +31,18 @@ const cseRequest = async (q: string, usePhoto: boolean, google: { apiKey: string
   }
   url.searchParams.set("imgSize", "large");
   url.searchParams.set("safe", "active");
-  const res = await fetch(url.toString());
-  const data: unknown = await res.json();
+  let res: Response;
+  try {
+    res = await fetch(url.toString());
+  } catch {
+    return null;
+  }
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    return null;
+  }
   if (!res.ok) return null;
   const p = parseCse(data);
   if (p?.error) return null;

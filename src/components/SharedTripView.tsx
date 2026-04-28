@@ -9,7 +9,10 @@ import { Hash, MapPin, Plane, Star } from "lucide-react";
 import { AppPageBackdrop } from "./app-page-backdrop";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { DayStopsDetailDialog } from "./day-stops-detail-dialog";
-import { buildDayRouteWgsPath } from "@/lib/day-route-path";
+import {
+  buildDayRouteWgsPath,
+  mapCenterFromWaypoints,
+} from "@/lib/day-route-path";
 import { toDisplayAddress } from "@/lib/format-address";
 import { capitalizePlaceName } from "@/lib/format-place";
 import {
@@ -95,6 +98,11 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
     [mapRouteStartPoint, currentDayPlan.routeStops]
   );
 
+  const mapCenterAlignedToRoute = useMemo(
+    () => mapCenterFromWaypoints(dayRouteWgsPath),
+    [dayRouteWgsPath]
+  );
+
   const sortedRouteStopsForDialog = useMemo(
     () =>
       [...(currentDayPlan.routeStops ?? [])].sort((a, b) => a.order - b.order),
@@ -110,6 +118,22 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
 
   const emptyMapPoints = useMemo<YandexMapPoint[]>(() => [], []);
   const { mapCenter } = trip.plan;
+
+  const mapCenterForMap = useMemo(() => {
+    if (
+      (currentDayPlan.routeStops?.length ?? 0) > 0 &&
+      mapCenterAlignedToRoute
+    ) {
+      return mapCenterAlignedToRoute;
+    }
+    return { ...mapCenter };
+  }, [
+    currentDayPlan.routeStops,
+    mapCenterAlignedToRoute,
+    mapCenter.lat,
+    mapCenter.lon,
+    mapCenter.zoom,
+  ]);
   const destination = useMemo(() => {
     const t = trip.to?.trim();
     if (!t) return "—";
@@ -210,7 +234,7 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
           </div>
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-gray-100">
             <YandexTripMap
-              mapCenter={mapCenter}
+              mapCenter={mapCenterForMap}
               points={emptyMapPoints}
               fromLabel={departure}
               toLabel={destination}

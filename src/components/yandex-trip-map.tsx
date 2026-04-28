@@ -144,6 +144,53 @@ const buildRouteSignature = (
     addr?.trim() ?? "",
   ].join("§");
 
+const dedupeAdjacentWaypoints = (
+  pts: readonly [number, number][]
+): [number, number][] => {
+  const out: [number, number][] = [];
+  const eps = 1e-5;
+  for (const p of pts) {
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      Math.abs(prev[0] - p[0]) < eps &&
+      Math.abs(prev[1] - p[1]) < eps
+    ) {
+      continue;
+    }
+    out.push([p[0], p[1]]);
+  }
+  return out;
+};
+
+/**
+ * Точная цепочка для пешеходного мультимаршрута: старт → места справа в том же порядке.
+ * Не опирается только на rawView, чтобы линия совпадала со списком достопримечательностей.
+ */
+const pedestrianWaypointsFromPanelOrder = (
+  stopsInUiOrder: readonly YandexMapPoint[],
+  serverStart: { lat: number; lon: number } | null | undefined,
+  geocodedStart: [number, number] | null
+): [number, number][] => {
+  const stopPts = stopsInUiOrder
+    .filter((s) => isPlausibleWgs(s.lat, s.lon))
+    .map((s) => [s.lat, s.lon] as [number, number]);
+  let startPt: [number, number] | null = null;
+  if (
+    serverStart &&
+    isPlausibleWgs(serverStart.lat, serverStart.lon)
+  ) {
+    startPt = [serverStart.lat, serverStart.lon];
+  } else if (geocodedStart) {
+    const [a, b] = geocodedStart;
+    if (isPlausibleWgs(a, b)) {
+      startPt = [a, b];
+    }
+  }
+  const chain = startPt ? [startPt, ...stopPts] : stopPts;
+  return dedupeAdjacentWaypoints(chain);
+};
+
 export const YandexTripMap = ({
   mapCenter,
   points,
@@ -404,11 +451,6 @@ export const YandexTripMap = ({
               routeStartPoint: dayRouteStartPoint,
               geocodedStart: gStart,
             });
-            onItineraryPathRef.current?.(
-              rawView
-                .filter((p) => isPlausibleWgs(p.lat, p.lon))
-                .map((p) => ({ lat: p.lat, lon: p.lon } as const))
-            );
             const refLatLon: [number, number][] = rawView
               .filter((p) => isPlausibleWgs(p.lat, p.lon))
               .map((p) => [p.lat, p.lon] as [number, number]);
@@ -424,7 +466,51 @@ export const YandexTripMap = ({
             const includeStartPoi =
               hasServerStart || rawView.length > serverWgs.length;
 
-            /** Те же вершины, что в refLatLon / ymaps.route — без рассинхрона с поинтами в маршруте */
+            /** Пеший маршрут по тем же точкам и порядку, что список справа: старт → остановки. */
+            let routeWaypoints = pedestrianWaypointsFromPanelOrder(
+              dayItineraryStops,
+              dayRouteStartPoint ?? undefined,
+              dayStartCoord
+            );
+            if (routeWaypoints.length < 2) {
+              const plausibleStopLatLon: [number, number][] =
+                dayItineraryStops
+                  .filter((s) => isPlausibleWgs(s.lat, s.lon))
+                  .map((s) => [s.lat, s.lon] as [number, number]);
+              let fb = refLatLon;
+              if (fb.length < 2) {
+                if (
+                  includeStartPoi &&
+                  rawView[0] &&
+                  isPlausibleWgs(rawView[0].lat, rawView[0].lon) &&
+                  plausibleStopLatLon.length >= 1
+                ) {
+                  const combined: [number, number][] = [
+                    [rawView[0].lat, rawView[0].lon],
+                    ...plausibleStopLatLon,
+                  ];
+                  fb =
+                    combined.length >= 2 ? combined : plausibleStopLatLon;
+                } else if (plausibleStopLatLon.length >= 2) {
+                  fb = plausibleStopLatLon;
+                }
+              }
+              if (fb.length >= 2) {
+                routeWaypoints = fb;
+              }
+            }
+            onItineraryPathRef.current?.(
+              routeWaypoints.length >= 2
+                ? routeWaypoints.map(([lat, lon]) => ({
+                    lat,
+                    lon,
+                  }))
+                : rawView
+                    .filter((p) => isPlausibleWgs(p.lat, p.lon))
+                    .map((p) => ({ lat: p.lat, lon: p.lon }))
+            );
+
+            /** Те же вершины, что в rawView / при необходимости — метки остановок без рассинхрона с линией */
             const wgsForStopIndex = (idx: number): WgsPoint => {
               if (includeStartPoi) {
                 const w = rawView[idx + 1];
@@ -438,15 +524,15 @@ export const YandexTripMap = ({
             };
 
             const addStraightFallback = () => {
-              if (refLatLon.length < 2) return;
+              if (routeWaypoints.length < 2) return;
               const line = new ymaps.Polyline(
-                refLatLon,
-                { balloonContent: "Маршрут дня" },
+                routeWaypoints,
+                { balloonContent: "Пеший маршрут дня (линия)" },
                 {
                   strokeColor: "#4ECDC4",
-                  strokeWidth: 4,
-                  strokeOpacity: 0.92,
-                  zIndex: 200,
+                  strokeWidth: 5,
+                  strokeOpacity: 0.95,
+                  zIndex: 220,
                 }
               );
               map.geoObjects.add(line);
@@ -495,11 +581,11 @@ export const YandexTripMap = ({
               });
             };
 
-            if (refLatLon.length < 2) {
+            if (routeWaypoints.length < 2) {
               addPlacemarks();
               const fb: [number, number][] =
-                refLatLon.length > 0
-                  ? refLatLon
+                routeWaypoints.length > 0
+                  ? routeWaypoints
                   : dayItineraryStops
                       .filter((s) =>
                         isPlausibleWgs(s.lat, s.lon)
@@ -510,7 +596,7 @@ export const YandexTripMap = ({
             }
 
             ymaps
-              .route(refLatLon, {
+              .route(routeWaypoints, {
                 mapStateAutoApply: false,
                 multiRoute: true,
                 routingMode: "pedestrian",
@@ -553,7 +639,7 @@ export const YandexTripMap = ({
               .then(() => {
                 if (cancelled) return;
                 addPlacemarks();
-                fitToItineraryPath(refLatLon);
+                fitToItineraryPath(routeWaypoints);
               });
             return;
           }
@@ -676,6 +762,7 @@ export const YandexTripMap = ({
     if (mapRouteFocus.kind === "stop") {
       const stop = dayItineraryStops.find((p) => p.id === mapRouteFocus.id);
       if (!stop) return;
+      if (!isPlausibleWgs(stop.lat, stop.lon)) return;
       lockAutoBoundsRef.current = true;
       m.setCenter([stop.lat, stop.lon], FOCUS_ON_LIST_CLICK_ZOOM, {
         duration: FOCUS_ON_LIST_MS,
