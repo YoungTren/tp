@@ -117,6 +117,7 @@ export const DayStopsDetailDialog = ({
                             src={stop.image}
                             alt=""
                             className="aspect-[4/3] w-full object-cover"
+                            responsiveSizes="(max-width: 640px) 100vw, (max-width: 1024px) 42vw, 400px"
                           />
                         </div>
                         <span

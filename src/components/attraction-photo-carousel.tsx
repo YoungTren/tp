@@ -85,6 +85,7 @@ export const AttractionPhotoCarousel = ({
               src={slide.image}
               alt={slide.title}
               className="h-full w-full object-cover"
+              responsiveSizes="(max-width: 1023px) 100vw, 480px"
             />
             <div
               className="absolute inset-0 z-[1] bg-gradient-to-t from-black/20 via-transparent to-transparent"

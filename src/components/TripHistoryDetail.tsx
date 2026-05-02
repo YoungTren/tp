@@ -106,11 +106,11 @@ export function TripHistoryDetail({ tripId, onBack }: TripHistoryDetailProps) {
   const currentDayPlan = trip.dayPlans.find((d) => d.day === selectedDay) || trip.dayPlans[0];
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden relative">
+    <div className="relative flex max-h-dvh min-h-dvh flex-col overflow-hidden">
       <AppPageBackdrop />
 
       {/* Top bar */}
-      <header className="relative z-10 flex shrink-0 items-center justify-between border-b border-gray-200/60 bg-white px-4 md:px-8 py-3">
+      <header className="relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200/60 bg-white px-3 py-2.5 sm:px-4 md:px-8 md:py-3">
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}
@@ -122,13 +122,13 @@ export function TripHistoryDetail({ tripId, onBack }: TripHistoryDetailProps) {
             <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: "#4ECDC4" }}>
               <Plane className="h-4.5 w-4.5 text-white" />
             </div>
-            <span style={{ fontSize: "18px", fontWeight: 600, color: "#1a1a1a" }}>{trip.to}</span>
+            <span className="truncate max-w-[min(100%,12rem)] sm:max-w-none" style={{ fontSize: "18px", fontWeight: 600, color: "#1a1a1a" }}>{trip.to}</span>
           </div>
         </div>
       </header>
 
       {/* Main */}
-      <div className="relative z-10 flex-1 overflow-hidden mx-auto w-full max-w-[1400px] p-4 md:p-6">
+      <div className="relative z-10 flex-1 overflow-hidden mx-auto w-full max-w-[1400px] p-3 sm:p-4 md:p-6">
         <div className="flex flex-col gap-3 lg:gap-5 h-full lg:grid lg:grid-cols-[260px_1fr_280px]">
           {/* Mobile: Trip card */}
           <motion.div
@@ -230,6 +230,7 @@ export function TripHistoryDetail({ tripId, onBack }: TripHistoryDetailProps) {
                         src={fav.image}
                         alt={fav.title}
                         className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                        responsiveSizes="40px"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate" style={{ fontSize: "13px", fontWeight: 500, color: "#1a1a1a" }}>{fav.title}</p>
@@ -423,6 +424,7 @@ export function TripHistoryDetail({ tripId, onBack }: TripHistoryDetailProps) {
                         src={fav.image}
                         alt={fav.title}
                         className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                        responsiveSizes="40px"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate" style={{ fontSize: "13px", fontWeight: 500, color: "#1a1a1a" }}>{fav.title}</p>

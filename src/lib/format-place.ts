@@ -1,8 +1,10 @@
+import { normalizeCityInput } from "@/lib/city-input-validation";
+
 /**
  * Показывает название места/nазначения с заглавной буквы («рим» → «Рим»), даже если пользователь ввёл строчными.
  */
 export const capitalizePlaceName = (s: string): string => {
-  const t = s.trim();
+  const t = normalizeCityInput(s);
   if (!t) return t;
   const cp = [...t];
   const i = cp.findIndex((ch) => /\p{L}/u.test(ch));

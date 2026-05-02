@@ -79,6 +79,86 @@ export const yandexGeocodeToLatLon = async (
   }
 };
 
+type CityResolution = { canonical: string; lat: number; lon: number };
+
+type NominatimRow = {
+  lat?: string;
+  lon?: string;
+  class?: string;
+  type?: string;
+  name?: string;
+  display_name?: string;
+  address?: {
+    city?: string;
+    town?: string;
+    village?: string;
+    municipality?: string;
+    hamlet?: string;
+  };
+};
+
+const CITY_PLACE_TYPES = new Set([
+  "city",
+  "town",
+  "village",
+  "municipality",
+  "hamlet",
+]);
+
+const pickCanonicalCityName = (row: NominatimRow): string | null => {
+  const a = row.address;
+  const fromAddress =
+    a?.city ?? a?.town ?? a?.village ?? a?.municipality ?? a?.hamlet ?? null;
+  if (fromAddress) return fromAddress;
+  if (row.class === "place" && CITY_PLACE_TYPES.has(row.type ?? "")) {
+    if (row.name) return row.name;
+    const head = row.display_name?.split(",")[0]?.trim();
+    if (head) return head;
+  }
+  return null;
+};
+
+/**
+ * Возвращает каноническое название города + координаты по запросу пользователя
+ * (Nominatim, fuzzy-поиск с `addressdetails`). Принимаются только city-like результаты:
+ * либо в `address` есть `city/town/village/municipality/hamlet`, либо `class=place` нужного типа.
+ * Поддерживаются RU/EN, простые опечатки и транслит — за счёт нечёткого поиска Nominatim.
+ */
+export const nominatimResolveCity = async (
+  q: string
+): Promise<CityResolution | null> => {
+  const text = q.trim();
+  if (!text) return null;
+  const u = new URL("https://nominatim.openstreetmap.org/search");
+  u.searchParams.set("q", text);
+  u.searchParams.set("format", "json");
+  u.searchParams.set("limit", "5");
+  u.searchParams.set("addressdetails", "1");
+  try {
+    const res = await fetch(u.toString(), {
+      headers: {
+        "User-Agent": NOMINATIM_UA,
+        Accept: "application/json",
+        "Accept-Language": "ru,en;q=0.9",
+      },
+    });
+    if (!res.ok) return null;
+    const data: unknown = await res.json();
+    if (!Array.isArray(data)) return null;
+    for (const row of data as NominatimRow[]) {
+      const canonical = pickCanonicalCityName(row);
+      if (!canonical) continue;
+      const lat = parseFloat(String(row.lat ?? ""));
+      const lon = parseFloat(String(row.lon ?? ""));
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      return { canonical, lat, lon };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 /** Резерв без API-ключей, если OpenStreetMap знает адрес (см. политику: умеренные запросы, User-Agent). */
 export const nominatimGeocodeToLatLon = async (
   address: string
@@ -429,28 +509,35 @@ export const refPointNearCity = async (
   city: string,
   yandexKey: string
 ): Promise<GeoPoint | null> => {
-  const c = city.trim();
+  const c = city.trim().replace(/\s+/g, " ");
   if (!c) return null;
+  /** Несколько формулировок — RU/EN и альтернативные названия (Мюнхен / Munich), транслит (Moskva → Москва). */
+  const queries = uniqueLines([
+    c,
+    `${c}, Россия`,
+    `${c}, Russia`,
+    `${c}, Europe`,
+  ]);
   const googleKey = process.env.GOOGLE_API_KEY?.trim() ?? "";
   if (yandexKey.trim()) {
-    const y =
-      (await yandexSearchMapsText(c, yandexKey, "geo")) ??
-      (await yandexSearchMapsText(c, yandexKey)) ??
-      (await yandexGeocodeToLatLon(c, yandexKey)) ??
-      null;
-    if (y) return y;
+    for (const q of queries) {
+      const y =
+        (await yandexSearchMapsText(q, yandexKey, "geo")) ??
+        (await yandexSearchMapsText(q, yandexKey)) ??
+        (await yandexGeocodeToLatLon(q, yandexKey)) ??
+        null;
+      if (y) return y;
+    }
   }
-  const nom =
-    (await nominatimGeocodeToLatLon(c)) ??
-    (await nominatimGeocodeToLatLon(`${c}, Россия`)) ??
-    (await nominatimGeocodeToLatLon(`${c}, Europe`)) ??
-    null;
-  if (nom) return nom;
+  for (const q of queries) {
+    const nom = await nominatimGeocodeToLatLon(q);
+    if (nom) return nom;
+  }
   if (googleKey) {
-    return (
-      (await googleGeocodeToLatLon(c, googleKey)) ??
-      (await googleGeocodeToLatLon(`${c}, Europe`, googleKey))
-    );
+    for (const q of queries) {
+      const gg = await googleGeocodeToLatLon(q, googleKey);
+      if (gg) return gg;
+    }
   }
   return null;
 };

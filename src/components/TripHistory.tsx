@@ -63,11 +63,11 @@ const historyTrips: HistoryTrip[] = [
 
 export function TripHistory({ onClose, onSelectTrip }: TripHistoryProps) {
   return (
-    <div className="h-screen flex flex-col overflow-hidden relative">
+    <div className="relative flex max-h-dvh min-h-dvh flex-col overflow-hidden">
       <AppPageBackdrop />
 
       {/* Top bar */}
-      <header className="relative z-10 flex shrink-0 items-center justify-between border-b border-gray-200/60 bg-white px-4 md:px-8 py-3">
+      <header className="relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200/60 bg-white px-3 py-2.5 sm:px-4 md:px-8 md:py-3">
         <div className="flex items-center gap-4">
           <button
             onClick={onClose}
@@ -86,7 +86,7 @@ export function TripHistory({ onClose, onSelectTrip }: TripHistoryProps) {
 
       {/* Main content */}
       <div className="relative z-10 flex-1 overflow-auto">
-        <div className="mx-auto max-w-[1400px] p-4 md:p-8">
+        <div className="mx-auto max-w-[1400px] p-3 sm:p-4 md:p-8">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -106,6 +106,7 @@ export function TripHistory({ onClose, onSelectTrip }: TripHistoryProps) {
                   src={trip.imageUrl}
                   alt={trip.destination}
                   className="absolute inset-0 h-full w-full object-cover"
+                  responsiveSizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 33vw"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 

@@ -7,6 +7,8 @@ declare global {
       /** Опционально: только для Places, если не совпадает с GOOGLE_API_KEY */
       GOOGLE_PLACES_API_KEY?: string;
       NEXT_PUBLIC_YANDEX_MAPS_API_KEY: string;
+      /** Карта маршрута через Google Maps JS (Directions); если пусто — Яндекс */
+      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?: string;
       /** Resend: отправка письма со ссылкой на маршрут */
       RESEND_API_KEY?: string;
       /** Resend: адрес «от кого» (см. консоль Resend / верификация домена) */

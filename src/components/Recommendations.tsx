@@ -59,6 +59,7 @@ export function Recommendations() {
                   src={place.image}
                   alt={place.title}
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                  responsiveSizes="96px"
                 />
               </div>
               <div className="flex-1 flex flex-col justify-between py-1">

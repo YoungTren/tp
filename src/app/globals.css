@@ -121,11 +121,12 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
     @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground min-h-dvh overflow-x-hidden;
   }
 }
 
@@ -138,4 +139,13 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+}
+
+/* Яндекс.Карты 2.x: нижний блок логотипа/условий внутри виджета приложения */
+[data-tp-yandex-map-root] [class*="copyright__logo"],
+[data-tp-yandex-map-root] [class*="copyrights-pane"],
+[data-tp-yandex-map-root] [class*="copyrights-promo"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }

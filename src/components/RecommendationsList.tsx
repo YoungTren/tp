@@ -20,8 +20,11 @@ export function RecommendationsList({ onClose, selectedId, recommendations }: Re
       : recommendations;
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ backgroundColor: "#F5F5F0" }}>
-      <header className="flex shrink-0 items-center justify-between border-b border-gray-200/60 bg-white px-4 md:px-8 py-4">
+    <div
+      className="flex max-h-dvh min-h-dvh flex-col overflow-hidden"
+      style={{ backgroundColor: "#F5F5F0" }}
+    >
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200/60 bg-white px-3 py-3 sm:px-4 md:px-8 md:py-4">
         <div className="flex items-center gap-3">
           <button
             onClick={onClose}
@@ -29,12 +32,14 @@ export function RecommendationsList({ onClose, selectedId, recommendations }: Re
           >
             <X className="h-5 w-5 text-gray-600" />
           </button>
-          <h1 style={{ fontSize: "18px", fontWeight: 600, color: "#1a1a1a" }}>Все рекомендации</h1>
+          <h1 className="truncate text-base font-semibold text-[#1a1a1a] sm:text-lg">
+            Все рекомендации
+          </h1>
         </div>
         <p className="hidden sm:block" style={{ fontSize: "14px", color: "#666" }}>{recommendations.length} мест</p>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 py-6 md:px-10">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 py-4 sm:px-4 md:px-10 md:py-6">
         <div className="mx-auto w-full max-w-5xl space-y-4 lg:max-w-6xl">
           {sorted.map((rec, index) => {
             const isSelected = rec.id === selectedId;
@@ -55,6 +60,7 @@ export function RecommendationsList({ onClose, selectedId, recommendations }: Re
                     src={rec.image}
                     alt={rec.title}
                     className="h-48 w-full md:w-72 shrink-0 rounded-xl object-cover"
+                    responsiveSizes="(max-width: 767px) 100vw, 288px"
                   />
 
                   <div className="flex-1 min-w-0">

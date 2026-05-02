@@ -131,5 +131,5 @@ export const resolveAttractionImageUrl = async (params: {
   if (places) return places;
 
   const seed = `${title}-${p}`.replace(/[^\w-]+/g, "-").slice(0, 80) || "place";
-  return `https://picsum.photos/seed/${encodeURIComponent(seed)}/400/300`;
+  return `https://picsum.photos/seed/${encodeURIComponent(seed)}/1600/1200`;
 };

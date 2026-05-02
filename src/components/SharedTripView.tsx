@@ -24,8 +24,8 @@ import { formatEstimatedCostSumOrFree } from "@/lib/place-price-hint";
 import type { MapRouteFocus, YandexMapPoint } from "./yandex-trip-map";
 import type { DayPlan, TripData } from "@/types/trip";
 
-const YandexTripMap = dynamic(
-  () => import("./yandex-trip-map").then((m) => m.YandexTripMap),
+const TripMap = dynamic(
+  () => import("./trip-map").then((m) => m.TripMap),
   {
     ssr: false,
     loading: () => (
@@ -142,33 +142,35 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
   const departure = trip.from || "—";
 
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden">
+    <div className="relative flex max-h-dvh min-h-dvh flex-col overflow-hidden">
       <AppPageBackdrop />
-      <header className="relative z-10 flex shrink-0 items-center justify-between border-b border-gray-200/60 bg-white px-4 py-3 md:px-8">
-        <div className="flex items-center gap-2.5">
+      <header className="relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-2 border-b border-gray-200/60 bg-white px-3 py-2.5 sm:px-4 md:px-8 md:py-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
           <div
-            className="flex h-9 w-9 items-center justify-center rounded-xl"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
             style={{ backgroundColor: "#4ECDC4" }}
           >
             <Plane className="h-4.5 w-4.5 text-white" />
           </div>
           <span
-            className="hidden sm:inline"
+            className="hidden truncate sm:inline"
             style={{ fontSize: "18px", fontWeight: 600, color: "#1a1a1a" }}
           >
             TravelPlanner
           </span>
         </div>
-        <p className="text-sm text-gray-500">Просмотр маршрута (ссылка)</p>
+        <p className="order-last w-full truncate text-center text-xs text-gray-500 sm:order-none sm:w-auto sm:flex-1 sm:text-left md:text-center md:text-sm">
+          Просмотр маршрута (ссылка)
+        </p>
         <Link
           href="/"
-          className="rounded-lg px-3 py-2 text-sm font-medium text-white"
+          className="shrink-0 rounded-lg px-2.5 py-2 text-xs font-medium text-white sm:px-3 sm:text-sm"
           style={{ backgroundColor: "#4ECDC4" }}
         >
           На главную
         </Link>
       </header>
-      <div className="relative z-10 mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-3 overflow-hidden p-4 md:p-6 lg:min-h-0 lg:grid lg:grid-cols-[260px_1fr_320px] lg:gap-5">
+      <div className="relative z-10 mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4 md:p-6 lg:min-h-0 lg:grid lg:grid-cols-[260px_1fr_320px] lg:gap-5">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -212,7 +214,7 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="order-1 flex min-h-0 flex-col rounded-2xl bg-white p-5 shadow-sm lg:order-2"
+          className="order-1 flex min-h-[200px] max-h-[min(50vh,520px)] flex-col rounded-2xl bg-white p-4 shadow-sm sm:p-5 md:max-h-[min(54vh,600px)] lg:order-2 lg:h-full lg:max-h-none lg:min-h-0 lg:flex-1"
         >
           <h2
             className="mb-4"
@@ -233,7 +235,7 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
             </span>
           </div>
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-gray-100">
-            <YandexTripMap
+            <TripMap
               mapCenter={mapCenterForMap}
               points={emptyMapPoints}
               fromLabel={departure}
@@ -251,7 +253,7 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
           animate={{ opacity: 1, x: 0 }}
           className="order-2 min-h-0 min-w-0 flex-1 lg:order-3"
         >
-          <div className="flex h-full min-h-0 max-h-[50vh] flex-col overflow-y-auto [scrollbar-gutter:stable] rounded-2xl bg-white p-5 pr-6 shadow-sm lg:max-h-none">
+          <div className="flex h-full min-h-0 max-h-[min(52vh,560px)] flex-col overflow-y-auto [scrollbar-gutter:stable] rounded-2xl bg-white p-4 pr-5 shadow-sm sm:p-5 sm:pr-6 md:max-h-[min(48vh,520px)] lg:max-h-none">
             {itineraryDays.some((d) => d.routeStartAddress?.trim()) ? (
               <div
                 className={`mb-3 flex gap-1 sm:gap-1.5 ${
@@ -337,6 +339,7 @@ export const SharedTripView = ({ trip }: SharedTripViewProps) => {
                             src={stop.image}
                             alt={stop.title}
                             className="h-full w-full object-cover"
+                            responsiveSizes="96px"
                           />
                         </div>
                         <span
