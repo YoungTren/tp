@@ -119,29 +119,17 @@ const ItineraryDayHeaderBar = (props: {
   const manyDays = itineraryDays.length > 7;
   return (
     <div
-      className={`flex w-full min-w-0 flex-wrap gap-x-1.5 gap-y-2 ${
-        manyDays ? "items-start" : "items-center"
-      } ${className ?? "mb-3"}`}
+      className={`flex w-full min-w-0 flex-col gap-2 ${className ?? "mb-3"}`}
     >
-      <div
-        className={`flex min-w-0 flex-1 ${
-          manyDays
-            ? "items-start gap-1.5 sm:gap-2"
-            : "items-center gap-x-1.5 sm:gap-x-2"
-        }`}
-      >
-        <h3
-          className={`shrink-0 text-[13px] font-semibold text-[#1a1a1a] ${
-            manyDays ? "pt-0.5 leading-6" : "leading-6"
-          }`}
-        >
+      <div className="flex min-w-0 items-start gap-1.5 sm:gap-2">
+        <h3 className="shrink-0 pt-0.5 text-[13px] font-semibold leading-6 text-[#1a1a1a]">
           День
         </h3>
         <div
           className={
             manyDays
               ? "grid min-w-0 flex-1 gap-0.5 [grid-template-columns:repeat(7,minmax(2rem,1fr))] sm:gap-1"
-              : "flex min-w-0 flex-1 flex-nowrap items-center gap-0.5"
+              : "flex min-w-0 flex-1 flex-wrap items-center gap-0.5 sm:gap-1"
           }
           role="tablist"
           aria-label="Дни поездки"
@@ -168,23 +156,24 @@ const ItineraryDayHeaderBar = (props: {
           ))}
         </div>
       </div>
-      {showShareRoute && onShareRoute ? (
-        <button
-          type="button"
-          onClick={onShareRoute}
-          aria-label="Поделиться маршрутом"
-          className="inline-flex h-7 min-h-[2.25rem] shrink-0 items-center gap-0.5 rounded-lg border-0 bg-[#4ECDC4] px-2 text-[10px] font-medium text-white shadow-sm transition hover:bg-[#45c2b9] sm:h-6 sm:min-h-0 sm:gap-1 sm:px-2 sm:text-[11px]"
-        >
-          <Share2
-            className="h-3 w-3 shrink-0 text-white"
-            aria-hidden
-          />
-          <span className="hidden whitespace-nowrap sm:inline">
-            Поделиться маршрутом
-          </span>
-        </button>
-      ) : null}
-      <DropdownMenu>
+      <div className="flex shrink-0 items-center justify-end gap-1.5">
+        {showShareRoute && onShareRoute ? (
+          <button
+            type="button"
+            onClick={onShareRoute}
+            aria-label="Поделиться маршрутом"
+            className="inline-flex h-7 min-h-[2.25rem] shrink-0 items-center gap-0.5 rounded-lg border-0 bg-[#4ECDC4] px-2 text-[10px] font-medium text-white shadow-sm transition hover:bg-[#45c2b9] sm:h-6 sm:min-h-0 sm:gap-1 sm:px-2 sm:text-[11px]"
+          >
+            <Share2
+              className="h-3 w-3 shrink-0 text-white"
+              aria-hidden
+            />
+            <span className="hidden whitespace-nowrap sm:inline">
+              Поделиться маршрутом
+            </span>
+          </button>
+        ) : null}
+        <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
@@ -212,6 +201,7 @@ const ItineraryDayHeaderBar = (props: {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     </div>
   );
 };
@@ -1443,10 +1433,7 @@ export function Dashboard({
                         ? mapFoundStartLabel.trim() ||
                           dayRouteStartForMap?.trim() ||
                           null
-                        : startAddressPreviewActive &&
-                            editingStartAddress.trim()
-                          ? editingStartAddress.trim()
-                          : null
+                        : null
                     }
                     draftResolvedStart={
                       mapFoundStartCoords
@@ -1454,7 +1441,7 @@ export function Dashboard({
                             lat: mapFoundStartCoords.lat,
                             lon: mapFoundStartCoords.lon,
                           }
-                        : undefined
+                        : null
                     }
                     draftGeocodeFailed={draftGeocodeFailedForMap}
                     onItineraryRoutePathChange={setMapItineraryPath}
