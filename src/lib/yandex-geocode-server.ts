@@ -1,4 +1,11 @@
+import {
+  buildCityScopedAddressQueries,
+  haversineKm,
+} from "@/lib/city-scoped-address";
+
 const NOMINATIM_UA = "TravelPlanner/1.0 (server geocode; contact: support)";
+
+const MAX_ADDRESS_DISTANCE_FROM_CITY_KM = 65;
 
 type GeoPoint = { lat: number; lon: number };
 
@@ -278,6 +285,34 @@ export const geocodeStartAddressFirstMatch = async (
   queries: readonly string[],
   yandexKey: string
 ): Promise<GeoPoint | null> => yandexGeocodeFirstMatch(queries, yandexKey);
+
+/**
+ * Стартовый адрес внутри выбранного города: только запросы «адрес + город» и проверка расстояния до центра.
+ */
+export const geocodeStartAddressInCity = async (
+  address: string,
+  city: string,
+  yandexKey: string
+): Promise<GeoPoint | null> => {
+  const c = city.trim();
+  const queries = buildCityScopedAddressQueries(address, c);
+  if (!queries.length) return null;
+  if (!c) {
+    return geocodeStartAddressFirstMatch(queries, yandexKey);
+  }
+
+  const cityCenter = await refPointNearCity(c, yandexKey);
+
+  for (const q of queries) {
+    const p = await yandexGeocodeFirstMatch([q], yandexKey);
+    if (!p) continue;
+    if (!cityCenter) return p;
+    if (haversineKm(cityCenter, p) <= MAX_ADDRESS_DISTANCE_FROM_CITY_KM) {
+      return p;
+    }
+  }
+  return null;
+};
 
 const uniqueLines = (lines: string[]): string[] => {
   const out: string[] = [];

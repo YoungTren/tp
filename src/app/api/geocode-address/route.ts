@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { geocodeStartAddressFirstMatch } from "@/lib/yandex-geocode-server";
+import { geocodeStartAddressInCity } from "@/lib/yandex-geocode-server";
 
 const MAX_LEN = 280;
 
@@ -13,17 +13,16 @@ export async function GET(request: Request) {
   if (!address || address.length > MAX_LEN) {
     return NextResponse.json({ error: "address required" }, { status: 400 });
   }
+  if (!city) {
+    return NextResponse.json({ error: "city required" }, { status: 400 });
+  }
 
   const yandexKey =
     process.env.YANDEX_MAPS_API_KEY?.trim() ??
     process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY?.trim() ??
     "";
 
-  const queries = city
-    ? [`${address}, ${city}`, `${city}, ${address}`, address]
-    : [address];
-
-  const p = await geocodeStartAddressFirstMatch(queries, yandexKey);
+  const p = await geocodeStartAddressInCity(address, city, yandexKey);
   if (!p) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }

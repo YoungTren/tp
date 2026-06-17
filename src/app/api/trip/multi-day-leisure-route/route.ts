@@ -10,7 +10,7 @@ import {
 } from "@/lib/multi-day-leisure-schema";
 import { getServerEnv } from "@/lib/server-env";
 import {
-  geocodeStartAddressFirstMatch,
+  geocodeStartAddressInCity,
   refPointNearCity,
   resolveStopsWithGeocodedCoords,
 } from "@/lib/yandex-geocode-server";
@@ -206,14 +206,9 @@ ${titleHint ? `- **Пожелания** (только **наследие**, **н
     );
   }
   const toCity = to.trim();
-  const startQueries = [
+  let firstDayStart = await geocodeStartAddressInCity(
     startAddress,
-    `${startAddress}, ${toCity}`,
-    `${toCity}, ${startAddress}`,
     toCity,
-  ] as const;
-  let firstDayStart = await geocodeStartAddressFirstMatch(
-    startQueries,
     yandexKey
   );
   if (!firstDayStart) {

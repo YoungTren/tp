@@ -12,7 +12,7 @@ import {
 import { getServerEnv } from "@/lib/server-env";
 import { normalizeLeisureTitle } from "@/lib/multi-day-leisure-schema";
 import {
-  geocodeStartAddressFirstMatch,
+  geocodeStartAddressInCity,
   resolveStopsWithGeocodedCoords,
 } from "@/lib/yandex-geocode-server";
 
@@ -261,13 +261,9 @@ ${titleHint ? `- Пожелание (только **наследие/истор�
   }
   const toCity = to.trim();
   const startPoint =
-    (await geocodeStartAddressFirstMatch(
-      [
-        startAddress,
-        `${startAddress}, ${toCity}`,
-        `${toCity}, ${startAddress}`,
-        toCity,
-      ],
+    (await geocodeStartAddressInCity(
+      startAddress,
+      toCity,
       yandexKey
     )) ?? null;
   const geocoded = await resolveStopsWithGeocodedCoords(

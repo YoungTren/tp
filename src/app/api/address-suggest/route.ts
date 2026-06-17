@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import {
+  nominatimResultMatchesCity,
+  nominatimViewboxForCenter,
+} from "@/lib/city-scoped-address";
+import { nominatimResolveCity } from "@/lib/yandex-geocode-server";
 
 const NOMINATIM_UA = "TravelPlanner/1.0 (address-suggest; contact: dev)";
 
@@ -9,6 +14,13 @@ type NominatimHit = {
   display_name?: string;
   lat?: string;
   lon?: string;
+  address?: {
+    city?: string;
+    town?: string;
+    village?: string;
+    municipality?: string;
+    hamlet?: string;
+  };
 };
 
 /**
@@ -23,13 +35,25 @@ export async function GET(request: Request) {
     return NextResponse.json({ suggestions: [] as { label: string }[] });
   }
 
-  const q = city ? `${raw}, ${city}` : raw;
+  if (!city) {
+    return NextResponse.json({ suggestions: [] });
+  }
+
+  const cityHit = await nominatimResolveCity(city);
 
   const url = new URL("https://nominatim.openstreetmap.org/search");
-  url.searchParams.set("q", q);
+  url.searchParams.set("q", `${raw}, ${city}`);
   url.searchParams.set("format", "json");
   url.searchParams.set("limit", "12");
   url.searchParams.set("addressdetails", "1");
+  if (cityHit) {
+    const { viewbox, bounded } = nominatimViewboxForCenter(
+      cityHit.lat,
+      cityHit.lon
+    );
+    url.searchParams.set("viewbox", viewbox);
+    url.searchParams.set("bounded", bounded);
+  }
 
   let data: unknown;
   try {
@@ -52,10 +76,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ suggestions: [] });
   }
 
+  const cityForMatch = cityHit?.canonical ?? city;
   const seen = new Set<string>();
   const suggestions: { label: string }[] = [];
 
   for (const row of data as NominatimHit[]) {
+    if (!nominatimResultMatchesCity(row, cityForMatch)) continue;
+
     const lat = Number.parseFloat(row.lat ?? "");
     const lon = Number.parseFloat(row.lon ?? "");
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;

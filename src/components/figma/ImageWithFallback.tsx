@@ -37,16 +37,6 @@ export function ImageWithFallback(props: ImageWithFallbackProps) {
           sizes: propSizes,
         };
 
-  const {
-    srcSet: strippedSrcSet,
-    sizes: strippedSizes,
-    src: strippedSrc,
-    ...restSafe
-  } = rest;
-  void strippedSrcSet;
-  void strippedSizes;
-  void strippedSrc;
-
   return didError ? (
     <div
       className={`block h-full w-full min-h-0 bg-gray-100 text-center ${className ?? ""}`}
@@ -56,7 +46,7 @@ export function ImageWithFallback(props: ImageWithFallbackProps) {
         <img
           src={ERROR_IMG_SRC}
           alt="Error loading image"
-          {...restSafe}
+          {...rest}
           data-original-url={attrs.src}
         />
       </div>
@@ -69,7 +59,7 @@ export function ImageWithFallback(props: ImageWithFallbackProps) {
       style={style}
       srcSet={attrs.srcSet}
       sizes={attrs.sizes}
-      {...restSafe}
+      {...rest}
       onError={handleError}
     />
   );

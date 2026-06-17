@@ -256,6 +256,12 @@ export function Dashboard({
     return capitalizePlaceName(raw);
   }, [cityForMap]);
 
+  /** Город из «Куда отправимся?» — для поиска адреса (без дефолта «Рим»). */
+  const cityForAddressSearch = useMemo(
+    () => capitalizePlaceName(cityForMap),
+    [cityForMap]
+  );
+
   useEffect(() => {
     if (!cityForMap) {
       setDestinationCityGeocodeError(null);
@@ -669,7 +675,7 @@ export function Dashboard({
       setAddressSuggestLoading(false);
       return;
     }
-    const city = destinationForTrip.trim();
+    const city = cityForAddressSearch.trim();
     const ac = new AbortController();
     setAddressSuggestLoading(true);
     void (async () => {
@@ -700,7 +706,7 @@ export function Dashboard({
     return () => ac.abort();
   }, [
     debouncedAddressSuggestQ,
-    destinationForTrip,
+    cityForAddressSearch,
     showStartLocationForm,
     isEditingStart,
   ]);
@@ -1149,7 +1155,7 @@ export function Dashboard({
     setDraftAddressGeocodePending(true);
     setDraftAddressGeocodeError(null);
 
-    const city = destinationForTrip.trim();
+    const city = cityForAddressSearch.trim();
     const params = new URLSearchParams({ address: raw });
     if (city) params.set("city", city);
 
@@ -1240,7 +1246,7 @@ export function Dashboard({
       setDraftResolvedForQuery(raw);
       setDraftAddressGeocodeError("Адрес не найден");
     }
-  }, [editingStartAddress, createRouteLoading, destinationForTrip, showStartLocationForm, confirmStartAndCreateRoute]);
+  }, [editingStartAddress, createRouteLoading, cityForAddressSearch, showStartLocationForm, confirmStartAndCreateRoute]);
 
   const findButtonDisabled =
     createRouteLoading ||
