@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { motion } from "motion/react";
 import { Check, Loader2, Plane, MapPin } from "lucide-react";
 import { cityInputFailsClientRules, normalizeCityInput } from "@/lib/city-input-validation";
@@ -10,6 +11,7 @@ import {
   normalizeDurationDays,
 } from "@/lib/trip-dates";
 import { buildPlaceholderTripPlan } from "@/lib/placeholder-trip-plan";
+import { TRAVEL_HERO_BACKGROUND_SRC } from "@/lib/travel-hero-bg";
 import type { MapCenter, TripData, TripFormFields } from "@/types/trip";
 
 interface TripSetupProps {
@@ -262,7 +264,9 @@ export function TripSetup({ onComplete }: TripSetupProps) {
   };
 
   const glassPanelStyle = {
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
   } as const;
 
   const inputBusy =
@@ -272,7 +276,19 @@ export function TripSetup({ onComplete }: TripSetupProps) {
     cityAiPending;
 
   return (
-    <div className="relative min-h-dvh w-full overflow-x-hidden overflow-y-auto bg-white">
+    <div className="relative min-h-dvh w-full overflow-x-hidden overflow-y-auto">
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <Image
+          src={TRAVEL_HERO_BACKGROUND_SRC}
+          alt=""
+          fill
+          priority
+          fetchPriority="high"
+          sizes="100vw"
+          className="object-cover"
+        />
+        <div className="absolute inset-0 bg-black/25" aria-hidden />
+      </div>
       <div className="relative z-10 flex min-h-dvh items-center justify-center px-4 py-8">
         <motion.div
           initial={{ opacity: 0 }}
